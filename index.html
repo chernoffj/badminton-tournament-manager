@@ -149,12 +149,194 @@ input, button, select, textarea { font-family: inherit; }
 .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-center { display: flex; align-items: center; justify-content: center; padding: 60px; gap: 12px; color: var(--text-dim); }
+/* ═══════════════════════════════════════════════════════════
+   NEW: Match Number Badge
+   ═══════════════════════════════════════════════════════════ */
+.match-number-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 2px 7px;
+  border-radius: 10px;
+  letter-spacing: 0.3px;
+}
+.match-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+/* ═══════════════════════════════════════════════════════════
+   NEW: Player Search Bar & Results
+   ═══════════════════════════════════════════════════════════ */
+.player-search-bar {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  position: relative;
+}
+.player-search-bar .search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.player-search-bar .search-icon {
+  font-size: 1.1rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.player-search-bar input {
+  flex: 1;
+  padding: 9px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-bright);
+  font-size: 0.92rem;
+  transition: border-color 0.15s;
+}
+.player-search-bar input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+.player-search-bar input::placeholder {
+  color: var(--text-dim);
+}
+.player-search-bar .search-clear {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 4px 8px;
+  border-radius: 50%;
+  transition: all 0.15s;
+}
+.player-search-bar .search-clear:hover {
+  background: var(--bg-input);
+  color: var(--text);
+}
+.search-results {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.search-results-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.search-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.search-result-item:hover {
+  border-color: var(--accent);
+  transform: translateX(4px);
+}
+.search-result-item.next-match {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  border-left: 3px solid var(--accent);
+}
+.search-result-item.completed-match {
+  opacity: 0.6;
+}
+.search-result-match-num {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 70px;
+}
+.search-result-detail {
+  flex: 1;
+  min-width: 0;
+}
+.search-result-detail .matchup {
+  font-size: 0.85rem;
+  color: var(--text-bright);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-result-detail .draw-info {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+.search-result-status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.search-result-status.upcoming {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.search-result-status.waiting {
+  background: var(--orange-dim);
+  color: var(--orange);
+}
+.search-result-status.won {
+  background: var(--green-dim);
+  color: var(--green);
+}
+.search-result-status.lost {
+  background: var(--red-dim);
+  color: var(--red);
+}
+.search-result-status.next {
+  background: var(--accent);
+  color: #fff;
+}
+.search-no-results {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  padding: 12px;
+}
+.match-card.highlighted {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim), var(--shadow);
+  animation: highlightPulse 1.5s ease-out;
+}
+@keyframes highlightPulse {
+  0% { box-shadow: 0 0 0 4px rgba(74,108,247,0.3), var(--shadow); }
+  100% { box-shadow: 0 0 0 2px var(--accent-dim), var(--shadow); }
+}
 @media (max-width: 640px) {
   .top-bar { flex-direction: column; align-items: stretch; text-align: center; }
   .top-bar-actions { justify-content: center; }
   .controls-bar { flex-direction: column; }
   .controls-bar .sep { width: 100%; height: 1px; margin: 4px 0; }
   .event-tabs { flex-wrap: nowrap; }
+  .search-result-item { flex-wrap: wrap; }
 }
 .hidden { display: none !important; }
 .mt-2 { margin-top: 8px; }
@@ -330,10 +512,6 @@ function generateMainDraw() {
   r = [makeMatch('M5.1', 5, 1,
     { type: 'winner', matchId: 'M4.1' }, { type: 'winner', matchId: 'M4.2' },
     { customLabel: 'MD Final', isFinal: true })];
-  rounds.push(r);
-  r = [makeMatch('M6.1', 6, 1,
-    { type: 'winner', matchId: 'M5.1' }, { type: 'winner', matchId: 'CD8.1' },
-    { customLabel: 'Overall Championship', isFinal: true, isOverallChampionship: true })];
   rounds.push(r);
   return { rounds };
 }
@@ -659,6 +837,103 @@ function generateShareCode() {
   return code;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   NEW: Build sequential match number map for an event
+   Numbers all matches across MD → CD → WCD, round by round.
+   ═══════════════════════════════════════════════════════════ */
+function buildMatchNumberMap(eventData) {
+  const map = {};
+  let num = 1;
+  const drawOrder = [
+    { key: 'mainDraw', prefix: 'MD' },
+    { key: 'consolationDraw', prefix: 'CD' },
+    { key: 'waterfallConsolationDraw', prefix: 'WCD' }
+  ];
+  for (const { key } of drawOrder) {
+    const draw = eventData[key];
+    if (!draw || !draw.rounds) continue;
+    for (const round of draw.rounds) {
+      for (const match of round) {
+        map[match.id] = num++;
+      }
+    }
+  }
+  return map;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NEW: Find all matches involving a player (by name search)
+   Returns array of { match, drawType, matchNumber, status }
+   ═══════════════════════════════════════════════════════════ */
+function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
+  if (!searchTerm || searchTerm.trim().length < 2) return [];
+  const term = searchTerm.toLowerCase().trim();
+
+  // Find matching team IDs
+  const matchingTeamIds = new Set();
+  eventData.teams.forEach(t => {
+    if (t.name.toLowerCase().includes(term)) {
+      matchingTeamIds.add(t.id);
+    }
+  });
+  if (matchingTeamIds.size === 0) return [];
+
+  const results = [];
+  const drawTypes = [
+    { key: 'mainDraw', type: 'MD', label: 'Main Draw' },
+    { key: 'consolationDraw', type: 'CD', label: 'Consolation' },
+    { key: 'waterfallConsolationDraw', type: 'WCD', label: 'Waterfall' }
+  ];
+
+  const getName = (teamId) => {
+    if (!teamId) return 'TBD';
+    if (teamId === 'BYE') return 'BYE';
+    const t = eventData.teams.find(x => x.id === teamId);
+    return t ? t.name : teamId;
+  };
+
+  for (const { key, type, label } of drawTypes) {
+    const draw = eventData[key];
+    if (!draw || !draw.rounds) continue;
+    for (const round of draw.rounds) {
+      for (const match of round) {
+        const t1Matches = match.team1Id && matchingTeamIds.has(match.team1Id);
+        const t2Matches = match.team2Id && matchingTeamIds.has(match.team2Id);
+        if (!t1Matches && !t2Matches) continue;
+
+        const playerTeamId = t1Matches ? match.team1Id : match.team2Id;
+        let status = 'waiting'; // teams not yet determined
+        if (match.isComplete) {
+          if (match.isBye) {
+            status = 'bye';
+          } else if (match.winnerId === playerTeamId) {
+            status = 'won';
+          } else {
+            status = 'lost';
+          }
+        } else if (match.team1Id && match.team2Id && match.team1Id !== 'TBD' && match.team2Id !== 'TBD') {
+          status = 'upcoming'; // both teams known, not yet played
+        }
+
+        results.push({
+          match,
+          drawType: type,
+          drawLabel: label,
+          matchNumber: matchNumberMap[match.id] || 0,
+          status,
+          team1Name: getName(match.team1Id),
+          team2Name: getName(match.team2Id),
+          matchLabel: match.customLabel || match.id
+        });
+      }
+    }
+  }
+
+  // Sort by match number
+  results.sort((a, b) => a.matchNumber - b.matchNumber);
+  return results;
+}
+
 async function createTournament(name, userId) {
   const code = generateShareCode();
   const ref = await db.collection('tournaments').add({
@@ -754,7 +1029,7 @@ function subscribeToEvent(tournamentId, eventId, callback) {
 /* ═══════════════════════════════════════════════════════════
    REACT APPLICATION
    ═══════════════════════════════════════════════════════════ */
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 function SetupGuide() {
   return (
@@ -947,7 +1222,7 @@ function ShareModal({ shareCode, onClose }) {
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
-    const maxAttempts = 25; // 25 * 200ms = 5 seconds max wait
+    const maxAttempts = 25;
 
     const tryGenerate = () => {
       if (cancelled) return;
@@ -1037,7 +1312,96 @@ function AddEditorModal({ tournamentId, onClose }) {
   );
 }
 
-function MatchCard({ match, eventData, drawType, readOnly, onSave }) {
+/* ═══════════════════════════════════════════════════════════
+   NEW: Player Search Component
+   ═══════════════════════════════════════════════════════════ */
+function PlayerSearchBar({ eventData, matchNumberMap, onScrollToMatch }) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef(null);
+
+  const results = useMemo(() => {
+    return findPlayerMatches(eventData, query, matchNumberMap);
+  }, [eventData, query, matchNumberMap]);
+
+  // Find the first upcoming/ready match (the "next match")
+  const nextMatchId = useMemo(() => {
+    const upcoming = results.find(r => r.status === 'upcoming');
+    if (upcoming) return upcoming.match.id;
+    const waiting = results.find(r => r.status === 'waiting');
+    return waiting ? waiting.match.id : null;
+  }, [results]);
+
+  const handleClear = () => {
+    setQuery('');
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  const getStatusLabel = (status, matchId) => {
+    if (matchId === nextMatchId && (status === 'upcoming' || status === 'waiting')) {
+      return { text: status === 'upcoming' ? 'NEXT MATCH' : 'UP NEXT', cls: 'next' };
+    }
+    switch (status) {
+      case 'upcoming': return { text: 'Ready', cls: 'upcoming' };
+      case 'waiting': return { text: 'Waiting', cls: 'waiting' };
+      case 'won': return { text: 'Won', cls: 'won' };
+      case 'lost': return { text: 'Lost', cls: 'lost' };
+      case 'bye': return { text: 'BYE', cls: 'won' };
+      default: return { text: status, cls: 'waiting' };
+    }
+  };
+
+  return (
+    <div className="player-search-bar">
+      <div className="search-input-row">
+        <span className="search-icon">🔍</span>
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Find your next match — type your name or school..."
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+        />
+        {query && <button className="search-clear" onClick={handleClear}>✕</button>}
+      </div>
+      {query.trim().length >= 2 && (
+        <div className="search-results">
+          {results.length > 0 ? (
+            <>
+              <div className="search-results-header">
+                {results.length} match{results.length !== 1 ? 'es' : ''} found
+              </div>
+              <div className="search-results-list">
+                {results.map(r => {
+                  const sl = getStatusLabel(r.status, r.match.id);
+                  const isNext = r.match.id === nextMatchId && (r.status === 'upcoming' || r.status === 'waiting');
+                  const isCompleted = r.status === 'won' || r.status === 'lost' || r.status === 'bye';
+                  return (
+                    <div
+                      key={r.match.id}
+                      className={`search-result-item ${isNext ? 'next-match' : ''} ${isCompleted ? 'completed-match' : ''}`}
+                      onClick={() => onScrollToMatch(r.match.id)}
+                    >
+                      <span className="search-result-match-num">Match #{r.matchNumber}</span>
+                      <div className="search-result-detail">
+                        <div className="matchup">{r.team1Name} vs {r.team2Name}</div>
+                        <div className="draw-info">{r.drawLabel} — {r.matchLabel}</div>
+                      </div>
+                      <span className={`search-result-status ${sl.cls}`}>{sl.text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="search-no-results">No matches found for "{query}"</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MatchCard({ match, eventData, drawType, readOnly, onSave, matchNumber, highlightedMatchId }) {
   const getName = (teamId) => {
     if (!teamId) return 'TBD';
     if (teamId === 'BYE') return 'BYE';
@@ -1068,9 +1432,17 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave }) {
   const t1cls = match.isComplete ? (match.winnerId === match.team1Id ? 'winner' : 'loser') : '';
   const t2cls = match.isComplete ? (match.winnerId === match.team2Id ? 'winner' : 'loser') : '';
 
+  const isHighlighted = highlightedMatchId === match.id;
+
   return (
-    <div className={`match-card ${match.isComplete ? (match.isBye ? 'bye' : 'complete') : ''}`}>
-      <div className="match-label">{label}</div>
+    <div
+      id={`match-${match.id}`}
+      className={`match-card ${match.isComplete ? (match.isBye ? 'bye' : 'complete') : ''} ${isHighlighted ? 'highlighted' : ''}`}
+    >
+      <div className="match-label-row">
+        {matchNumber && <span className="match-number-badge">Match #{matchNumber}</span>}
+        <span className="match-label" style={{ marginBottom: 0 }}>{label}</span>
+      </div>
       <div className={`match-team ${t1cls}`}>
         <span className="match-team-name">{getName(match.team1Id)}</span>
         <div className="match-scores">
@@ -1096,10 +1468,10 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave }) {
   );
 }
 
-function DrawView({ drawData, eventData, drawType, readOnly, onSave }) {
+function DrawView({ drawData, eventData, drawType, readOnly, onSave, matchNumberMap, highlightedMatchId }) {
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
-    MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final', 'Championship'],
+    MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final'],
     CD: ['CD Round 1', 'CD Round 2', 'CD Playdown 1', 'CD vs QF Losers', 'CD Playdown 2', 'CD Semi-Finals', 'CD Final', '2nd Place'],
     WCD: ['WCD Round 1', 'WCD Semi-Finals', 'WCD Final']
   };
@@ -1111,7 +1483,16 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave }) {
         <div key={ri} className="round-col">
           <div className="round-header">{labels[ri] || `Round ${ri + 1}`}</div>
           {roundMatches.map(m => (
-            <MatchCard key={m.id} match={m} eventData={eventData} drawType={drawType} readOnly={readOnly} onSave={onSave} />
+            <MatchCard
+              key={m.id}
+              match={m}
+              eventData={eventData}
+              drawType={drawType}
+              readOnly={readOnly}
+              onSave={onSave}
+              matchNumber={matchNumberMap ? matchNumberMap[m.id] : null}
+              highlightedMatchId={highlightedMatchId}
+            />
           ))}
         </div>
       ))}
@@ -1127,6 +1508,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
   const [saving, setSaving] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  const [highlightedMatchId, setHighlightedMatchId] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -1324,11 +1706,28 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     });
   };
 
+  /* Scroll to a match card and highlight it */
+  const handleScrollToMatch = useCallback((matchId) => {
+    setHighlightedMatchId(matchId);
+    // Wait a tick for React to render, then scroll
+    setTimeout(() => {
+      const el = document.getElementById(`match-${matchId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }
+    }, 50);
+    // Clear highlight after a few seconds
+    setTimeout(() => setHighlightedMatchId(null), 4000);
+  }, []);
+
   if (loading) return <div className="loading-center"><span className="spinner"></span> Loading tournament...</div>;
   if (!meta || !events) return <div className="app-shell"><div className="card"><p>Tournament not found.</p><button className="btn" onClick={onBack}>Back</button></div></div>;
 
   const ev = events[activeEvent];
   if (ev) populateAllDraws(ev);
+
+  // Build match number map for current event
+  const matchNumberMap = ev ? buildMatchNumberMap(ev) : {};
 
   return (
     <div className="app-shell">
@@ -1368,6 +1767,16 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           </button>
         ))}
       </div>
+
+      {/* Player Search Bar */}
+      {ev && (
+        <PlayerSearchBar
+          eventData={ev}
+          matchNumberMap={matchNumberMap}
+          onScrollToMatch={handleScrollToMatch}
+        />
+      )}
+
       {ev && (
         <>
           <div className="card">
@@ -1384,15 +1793,15 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           </div>
           <div className="card draw-section">
             <h3>Main Draw</h3>
-            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} />
+            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Consolation Draw</h3>
-            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} />
+            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Waterfall Consolations</h3>
-            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} />
+            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
         </>
       )}
