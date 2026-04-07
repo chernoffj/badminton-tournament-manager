@@ -242,8 +242,75 @@ const TEAMS_PER_SCHOOL = 2;
 const TOTAL_TEAMS = NUM_SCHOOLS * TEAMS_PER_SCHOOL; // 32
 
 /* ═══════════════════════════════════════════════════════════
+   FIRESTORE SERIALIZATION
+   Firestore does not support nested arrays (array of arrays).
+   The draw.rounds field is [[match,...], [match,...], ...].
+   We convert rounds to an object keyed by round index on save,
+   and convert back to an array of arrays on load.
+   We also ensure score arrays contain only non-undefined values.
+   ═══════════════════════════════════════════════════════════ */
+
+function sanitizeScoreArray(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(v => (v === undefined ? null : v));
+}
+
+function serializeDrawForFirestore(draw) {
+  if (!draw || !draw.rounds) return draw;
+  const serialized = { ...draw };
+  if (Array.isArray(serialized.rounds)) {
+    const roundsObj = {};
+    serialized.rounds.forEach((round, i) => {
+      roundsObj[String(i)] = round.map(match => ({
+        ...match,
+        score1: sanitizeScoreArray(match.score1),
+        score2: sanitizeScoreArray(match.score2)
+      }));
+    });
+    serialized.rounds = roundsObj;
+  }
+  return serialized;
+}
+
+function deserializeDrawFromFirestore(draw) {
+  if (!draw || !draw.rounds) return draw;
+  const deserialized = { ...draw };
+  if (!Array.isArray(deserialized.rounds) && typeof deserialized.rounds === 'object') {
+    const keys = Object.keys(deserialized.rounds)
+      .map(k => parseInt(k, 10))
+      .filter(k => !isNaN(k))
+      .sort((a, b) => a - b);
+    deserialized.rounds = keys.map(k => {
+      const round = deserialized.rounds[String(k)];
+      return Array.isArray(round) ? round.map(m => ({
+        ...m,
+        score1: Array.isArray(m.score1) ? m.score1 : [],
+        score2: Array.isArray(m.score2) ? m.score2 : []
+      })) : [];
+    });
+  }
+  return deserialized;
+}
+
+function serializeEventForFirestore(eventData) {
+  const data = JSON.parse(JSON.stringify(eventData));
+  data.mainDraw = serializeDrawForFirestore(data.mainDraw);
+  data.consolationDraw = serializeDrawForFirestore(data.consolationDraw);
+  data.waterfallConsolationDraw = serializeDrawForFirestore(data.waterfallConsolationDraw);
+  return data;
+}
+
+function deserializeEventFromFirestore(eventData) {
+  if (!eventData) return eventData;
+  const data = JSON.parse(JSON.stringify(eventData));
+  data.mainDraw = deserializeDrawFromFirestore(data.mainDraw);
+  data.consolationDraw = deserializeDrawFromFirestore(data.consolationDraw);
+  data.waterfallConsolationDraw = deserializeDrawFromFirestore(data.waterfallConsolationDraw);
+  return data;
+}
+
+/* ═══════════════════════════════════════════════════════════
    TOURNAMENT LOGIC — Draw generation, scoring, shuffling
-   (Preserved from original, refactored into pure functions)
    ═══════════════════════════════════════════════════════════ */
 
 function createInitialTeams(eventId) {
@@ -479,7 +546,10 @@ function determineMatchWinner(match, drawType) {
     const gw = checkGameWinner(match.score1[g], match.score2[g]);
     if (gw === 1) w1++; else if (gw === 2) w2++;
     else {
-      if (match.score1[g] !== null || match.score2[g] !== null) return { valid: false };
+      if (match.score1[g] !== null && match.score1[g] !== undefined &&
+          match.score2[g] !== null && match.score2[g] !== undefined) return { valid: false };
+      // Empty/null scores for remaining games in Bo3 are ok if someone already won 2
+      if (bo3 && (w1 >= 2 || w2 >= 2)) break;
     }
   }
   if (!bo3) {
@@ -681,6 +751,7 @@ function parseTeamsCSV(csvText) {
 
 /* ═══════════════════════════════════════════════════════════
    FIREBASE DATA LAYER
+   All saves serialize; all loads deserialize.
    ═══════════════════════════════════════════════════════════ */
 
 function generateShareCode() {
@@ -699,7 +770,7 @@ async function createTournament(name, userId) {
   const tData = createFullTournamentData();
   const batch = db.batch();
   Object.keys(tData).forEach(eid => {
-    batch.set(ref.collection('events').doc(eid), tData[eid]);
+    batch.set(ref.collection('events').doc(eid), serializeEventForFirestore(tData[eid]));
   });
   await batch.commit();
   return { id: ref.id, shareCode: code };
@@ -713,18 +784,22 @@ async function loadTournamentMeta(tournamentId) {
 async function loadTournamentEvents(tournamentId) {
   const snap = await db.collection('tournaments').doc(tournamentId).collection('events').get();
   const data = {};
-  snap.forEach(doc => { data[doc.id] = doc.data(); });
+  snap.forEach(doc => { data[doc.id] = deserializeEventFromFirestore(doc.data()); });
   return data;
 }
 
 async function saveEventData(tournamentId, eventId, eventData) {
-  await db.collection('tournaments').doc(tournamentId).collection('events').doc(eventId).set(eventData);
+  await db.collection('tournaments').doc(tournamentId).collection('events').doc(eventId)
+    .set(serializeEventForFirestore(eventData));
 }
 
 async function saveAllEvents(tournamentId, allEvents) {
   const batch = db.batch();
   Object.keys(allEvents).forEach(eid => {
-    batch.set(db.collection('tournaments').doc(tournamentId).collection('events').doc(eid), allEvents[eid]);
+    batch.set(
+      db.collection('tournaments').doc(tournamentId).collection('events').doc(eid),
+      serializeEventForFirestore(allEvents[eid])
+    );
   });
   await batch.commit();
 }
@@ -744,14 +819,12 @@ async function getUserTournaments(userId) {
 }
 
 async function addEditor(tournamentId, email) {
-  // Look up user by email — we store a simple mapping
   await db.collection('tournaments').doc(tournamentId).update({
     authorizedEditors: firebase.firestore.FieldValue.arrayUnion(email)
   });
 }
 
 async function deleteTournament(tournamentId) {
-  // Delete events subcollection first
   const eventsSnap = await db.collection('tournaments').doc(tournamentId).collection('events').get();
   const batch = db.batch();
   eventsSnap.forEach(doc => batch.delete(doc.ref));
@@ -761,7 +834,7 @@ async function deleteTournament(tournamentId) {
 
 function subscribeToEvent(tournamentId, eventId, callback) {
   return db.collection('tournaments').doc(tournamentId).collection('events').doc(eventId).onSnapshot(snap => {
-    if (snap.exists) callback(snap.data());
+    if (snap.exists) callback(deserializeEventFromFirestore(snap.data()));
   });
 }
 
@@ -1109,7 +1182,6 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
   const [saving, setSaving] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
-  const unsubRef = useRef(null);
 
   // Load tournament
   useEffect(() => {
@@ -1122,9 +1194,9 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
         if (!ev[eid]) ev[eid] = createEventObject(eid);
         // Ensure structure
         if (!ev[eid].teams || ev[eid].teams.length !== TOTAL_TEAMS) ev[eid].teams = createInitialTeams(eid);
-        if (!ev[eid].mainDraw || !ev[eid].mainDraw.rounds) ev[eid].mainDraw = generateMainDraw();
-        if (!ev[eid].consolationDraw || !ev[eid].consolationDraw.rounds) ev[eid].consolationDraw = generateConsolationDraw();
-        if (!ev[eid].waterfallConsolationDraw || !ev[eid].waterfallConsolationDraw.rounds) ev[eid].waterfallConsolationDraw = generateWaterfallDraw();
+        if (!ev[eid].mainDraw || !ev[eid].mainDraw.rounds || !Array.isArray(ev[eid].mainDraw.rounds)) ev[eid].mainDraw = generateMainDraw();
+        if (!ev[eid].consolationDraw || !ev[eid].consolationDraw.rounds || !Array.isArray(ev[eid].consolationDraw.rounds)) ev[eid].consolationDraw = generateConsolationDraw();
+        if (!ev[eid].waterfallConsolationDraw || !ev[eid].waterfallConsolationDraw.rounds || !Array.isArray(ev[eid].waterfallConsolationDraw.rounds)) ev[eid].waterfallConsolationDraw = generateWaterfallDraw();
         ev[eid].teams.forEach((t, idx) => {
           if (t.originalPlayerSlot === undefined) t.originalPlayerSlot = idx;
           t.mainDrawLosses = t.mainDrawLosses || 0;
@@ -1145,6 +1217,10 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
       subscribeToEvent(tournamentId, eid, (data) => {
         setEvents(prev => {
           const next = { ...prev, [eid]: data };
+          // Ensure rounds are arrays after deserialization
+          if (!Array.isArray(next[eid].mainDraw?.rounds)) next[eid].mainDraw = generateMainDraw();
+          if (!Array.isArray(next[eid].consolationDraw?.rounds)) next[eid].consolationDraw = generateConsolationDraw();
+          if (!Array.isArray(next[eid].waterfallConsolationDraw?.rounds)) next[eid].waterfallConsolationDraw = generateWaterfallDraw();
           if (data.teams) populateAllDraws(next[eid]);
           return next;
         });
@@ -1244,9 +1320,13 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
         Object.keys(EVENT_CODES).forEach(eid => {
           if (!imported[eid]) imported[eid] = createEventObject(eid);
           if (!imported[eid].teams || imported[eid].teams.length !== TOTAL_TEAMS) imported[eid].teams = createInitialTeams(eid);
-          if (!imported[eid].mainDraw) imported[eid].mainDraw = generateMainDraw();
-          if (!imported[eid].consolationDraw) imported[eid].consolationDraw = generateConsolationDraw();
-          if (!imported[eid].waterfallConsolationDraw) imported[eid].waterfallConsolationDraw = generateWaterfallDraw();
+          if (!imported[eid].mainDraw || !imported[eid].mainDraw.rounds) imported[eid].mainDraw = generateMainDraw();
+          if (!imported[eid].consolationDraw || !imported[eid].consolationDraw.rounds) imported[eid].consolationDraw = generateConsolationDraw();
+          if (!imported[eid].waterfallConsolationDraw || !imported[eid].waterfallConsolationDraw.rounds) imported[eid].waterfallConsolationDraw = generateWaterfallDraw();
+          // Handle case where imported JSON has object-style rounds (from a previous Firestore export)
+          imported[eid].mainDraw = deserializeDrawFromFirestore(imported[eid].mainDraw);
+          imported[eid].consolationDraw = deserializeDrawFromFirestore(imported[eid].consolationDraw);
+          imported[eid].waterfallConsolationDraw = deserializeDrawFromFirestore(imported[eid].waterfallConsolationDraw);
           imported[eid].teams.forEach((t, idx) => {
             if (t.originalPlayerSlot === undefined) t.originalPlayerSlot = idx;
             t.mainDrawLosses = t.mainDrawLosses || 0;
