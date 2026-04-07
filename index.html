@@ -166,6 +166,7 @@ input, button, select, textarea { font-family: inherit; }
 .flex-row { display: flex; gap: 8px; align-items: center; }
 .flex-wrap { flex-wrap: wrap; }
 .gap-2 { gap: 8px; }
+.editor-badge { font-size: 0.7rem; color: var(--purple); background: var(--purple-dim); padding: 2px 8px; border-radius: 10px; margin-left: 4px; }
 </style>
 </head>
 <body>
@@ -289,7 +290,7 @@ function makeMatch(id, round, matchInRound, team1Source, team2Source, opts = {})
     isBye: false, isComplete: false,
     isSF: !!opts.isSF, isFinal: !!opts.isFinal,
     isOverallChampionship: !!opts.isOverallChampionship,
-    isThirdPlacePlayoff: !!opts.isThirdPlacePlayoff,
+    isSecondPlacePlayoff: !!opts.isSecondPlacePlayoff,
     loserFeedsToNextBracketMatchId: opts.loserFeed || null,
     loserFeedsToNextBracketSlotNumber: opts.loserSlot || null,
     nextBracketType: opts.nextBracketType || null
@@ -331,7 +332,7 @@ function generateMainDraw() {
     { customLabel: 'MD Final', isFinal: true })];
   rounds.push(r);
   r = [makeMatch('M6.1', 6, 1,
-    { type: 'winner', matchId: 'M5.1' }, { type: 'winner', matchId: 'CD7.1' },
+    { type: 'winner', matchId: 'M5.1' }, { type: 'winner', matchId: 'CD8.1' },
     { customLabel: 'Overall Championship', isFinal: true, isOverallChampionship: true })];
   rounds.push(r);
   return { rounds };
@@ -386,8 +387,8 @@ function generateConsolationDraw() {
     { customLabel: 'CD Final', isFinal: true })];
   rounds.push(r);
   r = [makeMatch('CD8.1', 8, 1,
-    { type: 'loser', matchId: 'M5.1' }, { type: 'loser', matchId: 'CD7.1' },
-    { customLabel: '3rd Place Playoff', isThirdPlacePlayoff: true })];
+    { type: 'loser', matchId: 'M5.1' }, { type: 'winner', matchId: 'CD7.1' },
+    { customLabel: '2nd Place Playoff', isSecondPlacePlayoff: true })];
   rounds.push(r);
   return { rounds };
 }
@@ -447,7 +448,7 @@ function checkGameWinner(s1, s2) {
 
 function isBo3(match, drawType) {
   return (drawType === 'MD' && (match.isSF || match.isFinal || match.isOverallChampionship)) ||
-         (drawType === 'CD' && match.isFinal && !match.isThirdPlacePlayoff);
+         (drawType === 'CD' && (match.isFinal || match.isSecondPlacePlayoff));
 }
 
 function determineMatchWinner(match, drawType) {
@@ -708,10 +709,20 @@ async function findTournamentByShareCode(code) {
   return { id: doc.id, ...doc.data() };
 }
 
-async function getUserTournaments(userId) {
-  const owned = await db.collection('tournaments').where('ownerId', '==', userId).get();
+async function getUserTournaments(userId, userEmail) {
   const results = [];
-  owned.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
+  const owned = await db.collection('tournaments').where('ownerId', '==', userId).get();
+  owned.forEach(doc => results.push({ id: doc.id, ...doc.data(), _role: 'owner' }));
+
+  if (userEmail) {
+    const editable = await db.collection('tournaments').where('authorizedEditors', 'array-contains', userEmail).get();
+    editable.forEach(doc => {
+      if (!results.find(r => r.id === doc.id)) {
+        results.push({ id: doc.id, ...doc.data(), _role: 'editor' });
+      }
+    });
+  }
+
   results.sort((a, b) => {
     const ta = a.createdAt ? a.createdAt.seconds : 0;
     const tb = b.createdAt ? b.createdAt.seconds : 0;
@@ -839,7 +850,7 @@ function TournamentList({ user, onSelect, onSignOut }) {
   const loadList = async () => {
     setLoading(true);
     try {
-      const list = await getUserTournaments(user.uid);
+      const list = await getUserTournaments(user.uid, user.email);
       setTournaments(list);
     } catch (err) {
       console.error('Error loading tournaments:', err);
@@ -864,7 +875,9 @@ function TournamentList({ user, onSelect, onSignOut }) {
     setJoinError('');
     const meta = await findTournamentByShareCode(joinCode.trim().toUpperCase());
     if (!meta) { setJoinError('Tournament not found with that code.'); return; }
-    onSelect(meta.id, true);
+    const isOwner = meta.ownerId === user.uid;
+    const isEditor = meta.authorizedEditors && meta.authorizedEditors.includes(user.email);
+    onSelect(meta.id, !(isOwner || isEditor));
   };
 
   const handleDelete = async (id, name) => {
@@ -911,10 +924,10 @@ function TournamentList({ user, onSelect, onSignOut }) {
           <div className="tournament-grid mt-2">
             {tournaments.map(t => (
               <div key={t.id} className="tournament-tile" onClick={() => onSelect(t.id, false)}>
-                <h3>{t.name}</h3>
+                <h3>{t.name} {t._role === 'editor' && <span className="editor-badge">Editor</span>}</h3>
                 <div className="meta">Code: <strong style={{ fontFamily: 'var(--font-mono)' }}>{t.shareCode}</strong></div>
                 <div className="meta">Created: {t.createdAt ? new Date(t.createdAt.seconds * 1000).toLocaleDateString() : '—'}</div>
-                <button className="btn btn-danger btn-sm mt-2" onClick={e => { e.stopPropagation(); handleDelete(t.id, t.name); }}>Delete</button>
+                {t._role === 'owner' && <button className="btn btn-danger btn-sm mt-2" onClick={e => { e.stopPropagation(); handleDelete(t.id, t.name); }}>Delete</button>}
               </div>
             ))}
             {tournaments.length === 0 && <p className="text-dim">No tournaments yet. Create one to get started!</p>}
@@ -1087,7 +1100,7 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave }) {
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
     MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final', 'Championship'],
-    CD: ['CD Round 1', 'CD Round 2', 'CD Playdown 1', 'CD vs QF Losers', 'CD Playdown 2', 'CD Semi-Finals', 'CD Final', '3rd Place'],
+    CD: ['CD Round 1', 'CD Round 2', 'CD Playdown 1', 'CD vs QF Losers', 'CD Playdown 2', 'CD Semi-Finals', 'CD Final', '2nd Place'],
     WCD: ['WCD Round 1', 'WCD Semi-Finals', 'WCD Final']
   };
   const labels = roundLabels[drawType] || [];
@@ -1176,7 +1189,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     match.winnerId = result.winnerId;
     match.loserId = result.loserId;
     match.isComplete = true;
-    if (!match.isOverallChampionship && !match.isThirdPlacePlayoff) {
+    if (!match.isOverallChampionship && !match.isSecondPlacePlayoff) {
       const loser = ev.teams.find(t => t.id === match.loserId);
       if (loser) {
         if (drawType === 'MD') loser.mainDrawLosses = (loser.mainDrawLosses || 0) + 1;
