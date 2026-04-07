@@ -1,1319 +1,1479 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Badminton Tournament Manager</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; margin: 0; padding: 20px; background-color: #f0f2f5; color: #1c1e21; font-size: 14px; }
-        header { background-color: #4A90E2; color: white; padding: 15px 20px; text-align: center; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        header h1 { margin: 0; font-size: 1.8em; }
-        nav#event-tabs { margin-top: 10px; }
-        nav#event-tabs button { padding: 10px 15px; margin: 0 5px; cursor: pointer; background-color: #357ABD; color: white; border: none; border-radius: 5px; font-size: 0.9em; transition: background-color 0.2s; }
-        nav#event-tabs button:hover { background-color: #2A5C8D; }
-        nav#event-tabs button.active { background-color: #1E4263; font-weight: bold; }
-        
-        #tournament-controls { text-align: center; margin-bottom: 20px; padding: 10px; background-color: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-        #tournament-controls button { padding: 10px 18px; margin: 5px; cursor: pointer; color: white; border: none; border-radius: 5px; font-size: 0.95em; transition: background-color 0.2s, box-shadow 0.2s; }
-        #tournament-controls button#save-all-teams { background-color: #4CAF50; } /* Green */
-        #tournament-controls button#save-all-teams:hover { background-color: #45a049; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        #tournament-controls button#shuffle-current-event-teams { background-color: #FF9800; } /* Orange */
-        #tournament-controls button#shuffle-current-event-teams:hover { background-color: #FB8C00; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        #tournament-controls button#reset-tournament { background-color: #f44336; } /* Red */
-        #tournament-controls button#reset-tournament:hover { background-color: #e53935; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        #tournament-controls button#export-data { background-color: #007bff; } /* Blue */
-        #tournament-controls button#export-data:hover { background-color: #0069d9; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        #tournament-controls button#import-data { background-color: #17a2b8; } /* Teal */
-        #tournament-controls button#import-data:hover { background-color: #138496; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        /* New CSV Buttons */
-        #tournament-controls button#export-teams-csv { background-color: #6f42c1; } /* Purple */
-        #tournament-controls button#export-teams-csv:hover { background-color: #5a2dac; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        #tournament-controls button#import-teams-csv { background-color: #fd7e14; } /* Orange darker */
-        #tournament-controls button#import-teams-csv:hover { background-color: #e46d0b; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Badminton Tournament Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   CSS — Badminton Tournament Manager
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --bg: #0f1117;
+  --bg-card: #1a1d27;
+  --bg-card-hover: #222633;
+  --bg-input: #13151d;
+  --border: #2a2e3d;
+  --border-focus: #6c8cff;
+  --text: #e4e6ef;
+  --text-dim: #7a7f96;
+  --text-bright: #ffffff;
+  --accent: #6c8cff;
+  --accent-hover: #8ba3ff;
+  --accent-dim: rgba(108,140,255,0.12);
+  --green: #3dd68c;
+  --green-dim: rgba(61,214,140,0.12);
+  --red: #ff6b6b;
+  --red-dim: rgba(255,107,107,0.12);
+  --orange: #ffb347;
+  --orange-dim: rgba(255,179,71,0.12);
+  --purple: #b18cff;
+  --purple-dim: rgba(177,140,255,0.12);
+  --teal: #5ce0d8;
+  --teal-dim: rgba(92,224,216,0.12);
+  --yellow: #ffe066;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.35);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100vh; }
+input, button, select, textarea { font-family: inherit; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+/* Layout */
+.app-shell { max-width: 1400px; margin: 0 auto; padding: 16px; }
+.top-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+.top-bar h1 { font-size: 1.25rem; font-weight: 700; color: var(--text-bright); display: flex; align-items: center; gap: 8px; }
+.top-bar h1 span.icon { font-size: 1.4rem; }
+.top-bar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.user-badge { font-size: 0.8rem; color: var(--text-dim); background: var(--accent-dim); padding: 4px 10px; border-radius: 20px; }
 
-        .event-container { display: none; margin-top: 20px; padding: 20px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .event-container.active { display: block; }
-        .event-container h2 { color: #4A90E2; margin-top:0; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;}
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.15s; background: var(--bg-card); color: var(--text); }
+.btn:hover { background: var(--bg-card-hover); border-color: var(--text-dim); }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-danger { background: var(--red-dim); color: var(--red); border-color: transparent; }
+.btn-danger:hover { background: var(--red); color: #fff; }
+.btn-green { background: var(--green-dim); color: var(--green); border-color: transparent; }
+.btn-green:hover { background: var(--green); color: #000; }
+.btn-orange { background: var(--orange-dim); color: var(--orange); border-color: transparent; }
+.btn-orange:hover { background: var(--orange); color: #000; }
+.btn-purple { background: var(--purple-dim); color: var(--purple); border-color: transparent; }
+.btn-purple:hover { background: var(--purple); color: #fff; }
+.btn-sm { padding: 5px 10px; font-size: 0.78rem; }
+.btn-block { width: 100%; justify-content: center; }
 
-        .team-setup-area { margin-bottom: 25px; padding: 15px; background-color: #f9f9f9; border-radius: 6px; }
-        .team-setup-area h3 { margin-top: 0; color: #333; }
-        .team-input-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-        .team-input-group { display: flex; align-items: center; background-color: #fff; padding: 8px; border: 1px solid #ddd; border-radius:4px;}
-        .team-input-group label { display: inline-block; width: 100px; font-size: 0.9em; color: #555; margin-right: 5px; }
-        .team-input-group input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; flex-grow:1; font-size: 0.9em;}
-        
-        .draw-section h3 { border-bottom: 2px solid #4A90E2; padding-bottom: 8px; margin-top: 25px; margin-bottom: 15px; color: #1E4263;}
-        .draw { display: flex; flex-direction: row; overflow-x: auto; padding: 15px 5px; background-color: #fdfdfd; border: 1px solid #e0e0e0; border-radius: 6px; min-height: 350px;}
-        .round { display: flex; flex-direction: column; justify-content: space-around; margin-right: 15px; padding: 0 10px; min-width: 280px; border-right: 1px dashed #d0d0d0; }
-        .round:last-child { border-right: none; }
-        .match { background-color: #ffffff; border: 1px solid #cccccc; border-radius: 6px; padding: 12px; margin: 12px 0; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: box-shadow 0.2s;}
-        .match:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
-        .match .team { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; }
-        .match .team:last-child { border-bottom: none; }
-        .match .team-name { flex-grow: 1; font-size: 0.95em; color: #333; }
-        .match .scores-container { display: flex; }
-        .match .score-input { width: 38px; padding: 5px; text-align: center; margin-left: 4px; border: 1px solid #bbb; border-radius: 3px; font-size: 0.9em;}
-        .match .match-meta { font-size: 0.75em; color: #666; margin-bottom: 6px; text-align: right; }
-        .match button.save-score { padding: 8px 12px; font-size: 0.9em; background-color: #5cb85c; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; display: block; width: 100%; transition: background-color 0.2s;}
-        .match button.save-score:hover { background-color: #4cae4c; }
-        .match .winner .team-name { font-weight: bold; color: #007bff; } 
-        .match .loser .team-name { text-decoration: line-through; color: #777; }
-        .bye { font-style: italic; color: #555; text-align: center; padding: 15px; background-color: #f8f9fa; border-radius: 4px; margin-top: 5px;}
-        .match-complete-indicator { font-weight: bold; color: #28a745; margin-top: 5px; text-align: center; font-size:0.85em; }
+/* Cards / Panels */
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
+.card + .card { margin-top: 12px; }
+.card h2 { font-size: 1.1rem; font-weight: 700; color: var(--text-bright); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.card h3 { font-size: 0.95rem; font-weight: 600; color: var(--text); margin-bottom: 10px; }
 
-        #loading-status { text-align: center; padding: 12px; background-color: #ffc107; color: #333; border-radius: 5px; margin-bottom:15px; font-weight:500;}
-    </style>
+/* Form Inputs */
+.input { width: 100%; padding: 9px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-bright); font-size: 0.9rem; transition: border-color 0.15s; }
+.input:focus { outline: none; border-color: var(--border-focus); }
+.input::placeholder { color: var(--text-dim); }
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Auth Screen */
+.auth-wrapper { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.auth-card { width: 100%; max-width: 400px; }
+.auth-card h1 { text-align: center; margin-bottom: 6px; font-size: 1.6rem; color: var(--text-bright); }
+.auth-card .subtitle { text-align: center; color: var(--text-dim); margin-bottom: 24px; font-size: 0.9rem; }
+.auth-toggle { text-align: center; margin-top: 16px; font-size: 0.85rem; color: var(--text-dim); }
+.auth-toggle a { color: var(--accent); cursor: pointer; text-decoration: none; }
+.auth-toggle a:hover { text-decoration: underline; }
+.auth-error { background: var(--red-dim); color: var(--red); padding: 8px 12px; border-radius: var(--radius); margin-bottom: 12px; font-size: 0.85rem; }
+
+/* Tournament List */
+.tournament-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.tournament-tile { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px; cursor: pointer; transition: all 0.15s; }
+.tournament-tile:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow); }
+.tournament-tile h3 { font-size: 1rem; color: var(--text-bright); margin-bottom: 6px; }
+.tournament-tile .meta { font-size: 0.78rem; color: var(--text-dim); }
+.create-tile { border-style: dashed; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-dim); min-height: 120px; }
+.create-tile:hover { color: var(--accent); border-color: var(--accent); }
+.create-tile .plus { font-size: 2rem; line-height: 1; }
+
+/* Event Tabs */
+.event-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 4px; background: var(--bg-input); border-radius: var(--radius); margin-bottom: 16px; }
+.event-tab { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500; color: var(--text-dim); background: transparent; border: none; white-space: nowrap; transition: all 0.15s; }
+.event-tab:hover { color: var(--text); }
+.event-tab.active { background: var(--accent); color: #fff; }
+
+/* Team Setup */
+.team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.team-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg-input); border-radius: var(--radius); border: 1px solid var(--border); }
+.team-row label { font-size: 0.75rem; color: var(--text-dim); min-width: 56px; font-family: var(--font-mono); }
+.team-row input { flex: 1; background: transparent; border: none; color: var(--text-bright); font-size: 0.85rem; padding: 4px 0; }
+.team-row input:focus { outline: none; }
+
+/* Draw bracket */
+.draw-section { margin-top: 16px; }
+.draw-section h3 { font-size: 1rem; font-weight: 600; color: var(--accent); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.draw-container { display: flex; overflow-x: auto; padding: 12px 4px 12px 0; gap: 4px; min-height: 300px; }
+.round-col { display: flex; flex-direction: column; justify-content: space-around; min-width: 260px; padding: 0 6px; border-right: 1px dashed var(--border); }
+.round-col:last-child { border-right: none; }
+.round-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); font-family: var(--font-mono); text-align: center; padding: 4px 0 8px; }
+
+/* Match card */
+.match-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin: 6px 0; transition: border-color 0.15s; }
+.match-card:hover { border-color: var(--text-dim); }
+.match-card.complete { border-color: var(--green); border-left: 3px solid var(--green); }
+.match-card.bye { border-color: var(--text-dim); opacity: 0.6; }
+.match-label { font-size: 0.68rem; color: var(--text-dim); font-family: var(--font-mono); margin-bottom: 6px; text-align: right; }
+.match-team { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.match-team:last-of-type { border-bottom: none; }
+.match-team-name { flex: 1; font-size: 0.85rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.match-team.winner .match-team-name { color: var(--green); font-weight: 700; }
+.match-team.loser .match-team-name { color: var(--text-dim); text-decoration: line-through; }
+.match-scores { display: flex; gap: 3px; }
+.score-box { width: 36px; padding: 3px; text-align: center; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text-bright); font-size: 0.82rem; font-family: var(--font-mono); }
+.score-box:focus { border-color: var(--accent); outline: none; }
+.score-box:disabled { opacity: 0.5; }
+.match-save-btn { width: 100%; margin-top: 8px; padding: 6px; background: var(--green-dim); color: var(--green); border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.15s; }
+.match-save-btn:hover { background: var(--green); color: #000; }
+.match-bye-text { text-align: center; font-size: 0.8rem; color: var(--text-dim); font-style: italic; padding: 4px 0; }
+.match-winner-text { text-align: center; font-size: 0.78rem; color: var(--green); font-weight: 600; margin-top: 4px; }
+
+/* Controls bar */
+.controls-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 16px; }
+.controls-bar .sep { width: 1px; background: var(--border); margin: 0 4px; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modal-content { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; }
+.modal-content h2 { margin-bottom: 16px; }
+.modal-close { position: absolute; top: 12px; right: 16px; background: none; border: none; color: var(--text-dim); font-size: 1.4rem; cursor: pointer; }
+
+/* QR section */
+.qr-container { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px; }
+.qr-container canvas { border-radius: var(--radius); }
+.share-url { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim); word-break: break-all; text-align: center; background: var(--bg-input); padding: 8px 12px; border-radius: var(--radius); width: 100%; }
+
+/* Read-only banner */
+.readonly-banner { background: var(--orange-dim); color: var(--orange); padding: 10px 16px; border-radius: var(--radius); margin-bottom: 12px; text-align: center; font-size: 0.88rem; font-weight: 500; }
+
+/* Config screen */
+.config-box { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin: 20px auto; max-width: 600px; }
+.config-box pre { background: var(--bg-card); padding: 12px; border-radius: var(--radius); font-size: 0.78rem; overflow-x: auto; color: var(--accent); font-family: var(--font-mono); line-height: 1.6; }
+.config-box p { color: var(--text-dim); font-size: 0.88rem; line-height: 1.6; margin-bottom: 10px; }
+.config-box h2 { color: var(--text-bright); margin-bottom: 12px; }
+
+/* Spinner */
+.spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-center { display: flex; align-items: center; justify-content: center; padding: 60px; gap: 12px; color: var(--text-dim); }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .top-bar { flex-direction: column; align-items: stretch; text-align: center; }
+  .top-bar-actions { justify-content: center; }
+  .controls-bar { flex-direction: column; }
+  .controls-bar .sep { width: 100%; height: 1px; margin: 4px 0; }
+  .event-tabs { flex-wrap: nowrap; }
+}
+
+/* Utility */
+.hidden { display: none !important; }
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.mb-2 { margin-bottom: 8px; }
+.text-center { text-align: center; }
+.text-dim { color: var(--text-dim); }
+.text-sm { font-size: 0.82rem; }
+.flex-row { display: flex; gap: 8px; align-items: center; }
+.flex-wrap { flex-wrap: wrap; }
+.gap-2 { gap: 8px; }
+</style>
 </head>
 <body>
-    <header>
-        <h1>Badminton Tournament Manager</h1>
-        <nav id="event-tabs"></nav>
-    </header>
+<div id="root"></div>
 
-    <div id="tournament-controls">
-        <button id="save-all-teams">Save All Team Names</button>
-        <button id="shuffle-current-event-teams">Shuffle Current Event Entries</button>
-        <button id="reset-tournament">Reset Tournament Data</button>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 10px 0;">
-        <button id="export-data">Export Tournament Data (JSON)</button>
-        <button id="import-data">Import Tournament Data (JSON)</button>
-        <input type="file" id="import-file-input" accept=".json" style="display: none;">
-        <hr style="border: none; border-top: 1px solid #eee; margin: 10px 0;">
-        <button id="export-teams-csv">Export Team Names (CSV)</button>
-        <button id="import-teams-csv">Import Team Names (CSV)</button>
-        <input type="file" id="import-teams-csv-input" accept=".csv" style="display: none;">
-        <p id="loading-status" style="display:none;">Loading data...</p>
+<script type="text/babel">
+/* ═══════════════════════════════════════════════════════════
+   FIREBASE CONFIG — Replace with your own Firebase project
+   ═══════════════════════════════════════════════════════════ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDmPzyNjDT37ZGuEPZjXzROpB0WRGpteIM",
+  authDomain: "badminton-4bf63.firebaseapp.com",
+  projectId: "badminton-4bf63",
+  storageBucket: "badminton-4bf63.firebasestorage.app",
+  messagingSenderId: "887242367972",
+  appId: "1:887242367972:web:fcf408e773fa5aba2cddf1"
+};
+
+const IS_CONFIGURED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
+
+let fb = null, db = null, auth = null;
+if (IS_CONFIGURED) {
+  fb = firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.firestore();
+  auth = firebase.auth();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CONSTANTS
+   ═══════════════════════════════════════════════════════════ */
+const EVENT_CODES = {
+  BS: "Boy's Singles", GS: "Girl's Singles",
+  BD: "Boy's Doubles", GD: "Girl's Doubles",
+  XD: "Mixed Doubles"
+};
+const NUM_SCHOOLS = 16;
+const TEAMS_PER_SCHOOL = 2;
+const TOTAL_TEAMS = NUM_SCHOOLS * TEAMS_PER_SCHOOL; // 32
+
+/* ═══════════════════════════════════════════════════════════
+   TOURNAMENT LOGIC — Draw generation, scoring, shuffling
+   (Preserved from original, refactored into pure functions)
+   ═══════════════════════════════════════════════════════════ */
+
+function createInitialTeams(eventId) {
+  const teams = [];
+  for (let i = 0; i < NUM_SCHOOLS; i++) {
+    for (let j = 0; j < TEAMS_PER_SCHOOL; j++) {
+      teams.push({
+        id: `${eventId}_s${i+1}_t${j+1}`,
+        name: `School ${i+1} - Team ${j+1}`,
+        originalPlayerSlot: teams.length,
+        mainDrawLosses: 0,
+        consolationLosses: 0
+      });
+    }
+  }
+  return teams;
+}
+
+function makeMatch(id, round, matchInRound, team1Source, team2Source, opts = {}) {
+  return {
+    id, round, matchInRound,
+    customLabel: opts.customLabel || '',
+    team1Id: null, team2Id: null,
+    team1Source: team1Source || null,
+    team2Source: team2Source || null,
+    score1: [], score2: [],
+    winnerId: null, loserId: null,
+    isBye: false, isComplete: false,
+    isSF: !!opts.isSF, isFinal: !!opts.isFinal,
+    isOverallChampionship: !!opts.isOverallChampionship,
+    isThirdPlacePlayoff: !!opts.isThirdPlacePlayoff,
+    loserFeedsToNextBracketMatchId: opts.loserFeed || null,
+    loserFeedsToNextBracketSlotNumber: opts.loserSlot || null,
+    nextBracketType: opts.nextBracketType || null
+  };
+}
+
+function generateMainDraw() {
+  const rounds = [];
+  // R1: 16 matches (32 seeds)
+  let r = [];
+  for (let i = 0; i < 16; i++) {
+    r.push(makeMatch(`M1.${i+1}`, 1, i+1,
+      { type: 'seed', slot: i*2 }, { type: 'seed', slot: i*2+1 },
+      { customLabel: `MD R1.${i+1}`, loserFeed: `CD1.${Math.floor(i/2)+1}`, loserSlot: (i%2===0)?1:2, nextBracketType: 'CD' }));
+  }
+  rounds.push(r);
+
+  // R2: 8 matches
+  r = [];
+  for (let i = 0; i < 8; i++) {
+    r.push(makeMatch(`M2.${i+1}`, 2, i+1,
+      { type: 'winner', matchId: `M1.${i*2+1}` }, { type: 'winner', matchId: `M1.${i*2+2}` },
+      { customLabel: `MD R2.${i+1}`, loserFeed: `CD2.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
+  }
+  rounds.push(r);
+
+  // R3 QF: 4 matches
+  r = [];
+  for (let i = 0; i < 4; i++) {
+    r.push(makeMatch(`M3.${i+1}`, 3, i+1,
+      { type: 'winner', matchId: `M2.${i*2+1}` }, { type: 'winner', matchId: `M2.${i*2+2}` },
+      { customLabel: `MD QF.${i+1}`, loserFeed: `CD4.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
+  }
+  rounds.push(r);
+
+  // R4 SF: 2 matches (Bo3)
+  r = [];
+  for (let i = 0; i < 2; i++) {
+    r.push(makeMatch(`M4.${i+1}`, 4, i+1,
+      { type: 'winner', matchId: `M3.${i*2+1}` }, { type: 'winner', matchId: `M3.${i*2+2}` },
+      { customLabel: `MD SF.${i+1}`, isSF: true, loserFeed: `CD6.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
+  }
+  rounds.push(r);
+
+  // R5 Final: 1 match (Bo3)
+  r = [makeMatch('M5.1', 5, 1,
+    { type: 'winner', matchId: 'M4.1' }, { type: 'winner', matchId: 'M4.2' },
+    { customLabel: 'MD Final', isFinal: true })];
+  rounds.push(r);
+
+  // R6 Overall Championship (Bo3)
+  r = [makeMatch('M6.1', 6, 1,
+    { type: 'winner', matchId: 'M5.1' }, { type: 'winner', matchId: 'CD7.1' },
+    { customLabel: 'Overall Championship', isFinal: true, isOverallChampionship: true })];
+  rounds.push(r);
+
+  return { rounds };
+}
+
+function generateConsolationDraw() {
+  const rounds = [];
+  // CD-R1: 8 matches (16 MD-R1 losers)
+  let r = [];
+  for (let i = 0; i < 8; i++) {
+    r.push(makeMatch(`CD1.${i+1}`, 1, i+1,
+      { type: 'loser', matchId: `M1.${i*2+1}` }, { type: 'loser', matchId: `M1.${i*2+2}` },
+      { customLabel: `CD R1.${i+1}`, loserFeed: `WCD1.${Math.floor(i/2)+1}`, loserSlot: (i%2===0)?1:2, nextBracketType: 'WCD' }));
+  }
+  rounds.push(r);
+
+  // CD-R2: 8 matches (CD-R1 winners vs MD-R2 losers)
+  r = [];
+  for (let i = 0; i < 8; i++) {
+    r.push(makeMatch(`CD2.${i+1}`, 2, i+1,
+      { type: 'winner', matchId: `CD1.${i+1}` }, { type: 'loser', matchId: `M2.${i+1}` },
+      { customLabel: `CD R2.${i+1}` }));
+  }
+  rounds.push(r);
+
+  // CD-R3: 4 matches playdown
+  r = [];
+  for (let i = 0; i < 4; i++) {
+    r.push(makeMatch(`CD3.${i+1}`, 3, i+1,
+      { type: 'winner', matchId: `CD2.${i*2+1}` }, { type: 'winner', matchId: `CD2.${i*2+2}` },
+      { customLabel: `CD R3.${i+1} (Playdown)` }));
+  }
+  rounds.push(r);
+
+  // CD-R4: 4 matches (CD-R3 winners vs MD-QF losers)
+  r = [];
+  for (let i = 0; i < 4; i++) {
+    r.push(makeMatch(`CD4.${i+1}`, 4, i+1,
+      { type: 'winner', matchId: `CD3.${i+1}` }, { type: 'loser', matchId: `M3.${i+1}` },
+      { customLabel: `CD R4.${i+1} (vs QFL)` }));
+  }
+  rounds.push(r);
+
+  // CD-R5: 2 matches playdown
+  r = [];
+  for (let i = 0; i < 2; i++) {
+    r.push(makeMatch(`CD5.${i+1}`, 5, i+1,
+      { type: 'winner', matchId: `CD4.${i*2+1}` }, { type: 'winner', matchId: `CD4.${i*2+2}` },
+      { customLabel: `CD R5.${i+1} (Playdown)` }));
+  }
+  rounds.push(r);
+
+  // CD-R6: 2 CD SF matches (CD-R5 winners vs MD-SF losers)
+  r = [];
+  for (let i = 0; i < 2; i++) {
+    r.push(makeMatch(`CD6.${i+1}`, 6, i+1,
+      { type: 'winner', matchId: `CD5.${i+1}` }, { type: 'loser', matchId: `M4.${i+1}` },
+      { customLabel: `CD SF.${i+1}` }));
+  }
+  rounds.push(r);
+
+  // CD-R7: Final
+  r = [makeMatch('CD7.1', 7, 1,
+    { type: 'winner', matchId: 'CD6.1' }, { type: 'winner', matchId: 'CD6.2' },
+    { customLabel: 'CD Final', isFinal: true })];
+  rounds.push(r);
+
+  // CD-R8: 3rd Place
+  r = [makeMatch('CD8.1', 8, 1,
+    { type: 'loser', matchId: 'M5.1' }, { type: 'loser', matchId: 'CD7.1' },
+    { customLabel: '3rd Place Playoff', isThirdPlacePlayoff: true })];
+  rounds.push(r);
+
+  return { rounds };
+}
+
+function generateWaterfallDraw() {
+  const rounds = [];
+  // WCD-R1: 4 matches (8 CD-R1 losers)
+  let r = [];
+  for (let i = 0; i < 4; i++) {
+    r.push(makeMatch(`WCD1.${i+1}`, 1, i+1,
+      { type: 'loser', matchId: `CD1.${i*2+1}` }, { type: 'loser', matchId: `CD1.${i*2+2}` },
+      { customLabel: `WCD R1.${i+1}` }));
+  }
+  rounds.push(r);
+
+  // WCD-R2 SF: 2 matches
+  r = [];
+  for (let i = 0; i < 2; i++) {
+    r.push(makeMatch(`WCD2.${i+1}`, 2, i+1,
+      { type: 'winner', matchId: `WCD1.${i*2+1}` }, { type: 'winner', matchId: `WCD1.${i*2+2}` },
+      { customLabel: `WCD SF.${i+1}` }));
+  }
+  rounds.push(r);
+
+  // WCD-R3 Final
+  r = [makeMatch('WCD3.1', 3, 1,
+    { type: 'winner', matchId: 'WCD2.1' }, { type: 'winner', matchId: 'WCD2.2' },
+    { customLabel: 'WCD Final' })];
+  rounds.push(r);
+
+  return { rounds };
+}
+
+function createEventObject(eventId) {
+  return {
+    id: eventId, name: EVENT_CODES[eventId],
+    teams: createInitialTeams(eventId),
+    mainDraw: generateMainDraw(),
+    consolationDraw: generateConsolationDraw(),
+    waterfallConsolationDraw: generateWaterfallDraw(),
+    setupComplete: false
+  };
+}
+
+function createFullTournamentData() {
+  const data = {};
+  Object.keys(EVENT_CODES).forEach(eid => { data[eid] = createEventObject(eid); });
+  return data;
+}
+
+/* --- Scoring Rules --- */
+function checkGameWinner(s1, s2) {
+  if (s1 === null || s2 === null || s1 === undefined || s2 === undefined || String(s1).trim() === '' || String(s2).trim() === '') return null;
+  const p1 = parseInt(s1), p2 = parseInt(s2);
+  if (isNaN(p1) || isNaN(p2)) return null;
+  if (p1 === 30 && p1 > p2) return 1;
+  if (p2 === 30 && p2 > p1) return 2;
+  if (p1 < 30 && p2 < 30) {
+    if (p1 >= 21 && p1 >= p2 + 2) return 1;
+    if (p2 >= 21 && p2 >= p1 + 2) return 2;
+  }
+  return null;
+}
+
+function isBo3(match, drawType) {
+  return (drawType === 'MD' && (match.isSF || match.isFinal || match.isOverallChampionship)) ||
+         (drawType === 'CD' && match.isFinal && !match.isThirdPlacePlayoff);
+}
+
+function determineMatchWinner(match, drawType) {
+  const bo3 = isBo3(match, drawType);
+  const numGames = bo3 ? 3 : 1;
+  let w1 = 0, w2 = 0;
+  for (let g = 0; g < numGames; g++) {
+    if (bo3 && (w1 >= 2 || w2 >= 2)) break;
+    const gw = checkGameWinner(match.score1[g], match.score2[g]);
+    if (gw === 1) w1++; else if (gw === 2) w2++;
+    else {
+      if (match.score1[g] !== null || match.score2[g] !== null) return { valid: false };
+    }
+  }
+  if (!bo3) {
+    if (w1 === 1) return { valid: true, winnerId: match.team1Id, loserId: match.team2Id };
+    if (w2 === 1) return { valid: true, winnerId: match.team2Id, loserId: match.team1Id };
+    return { valid: false };
+  } else {
+    if (w1 >= 2) return { valid: true, winnerId: match.team1Id, loserId: match.team2Id };
+    if (w2 >= 2) return { valid: true, winnerId: match.team2Id, loserId: match.team1Id };
+    return { valid: false };
+  }
+}
+
+/* --- Populating draws --- */
+function findMatch(eventData, drawType, matchId) {
+  let draw;
+  if (drawType === 'MD') draw = eventData.mainDraw;
+  else if (drawType === 'CD') draw = eventData.consolationDraw;
+  else if (drawType === 'WCD') draw = eventData.waterfallConsolationDraw;
+  if (!draw || !draw.rounds) return null;
+  for (const round of draw.rounds) {
+    const m = round.find(x => x.id === matchId);
+    if (m) return m;
+  }
+  return null;
+}
+
+function findMatchAcrossDraws(eventData, matchId) {
+  if (matchId.startsWith('M')) return findMatch(eventData, 'MD', matchId);
+  if (matchId.startsWith('WCD')) return findMatch(eventData, 'WCD', matchId);
+  if (matchId.startsWith('CD')) return findMatch(eventData, 'CD', matchId);
+  return null;
+}
+
+function getPlayerIdFromSource(eventData, source) {
+  if (!source) return null;
+  if (source.type === 'seed') return eventData.teams[source.slot] ? eventData.teams[source.slot].id : null;
+  if (source.type === 'winner') {
+    const sm = findMatchAcrossDraws(eventData, source.matchId);
+    return (sm && sm.isComplete) ? sm.winnerId : null;
+  }
+  if (source.type === 'loser') {
+    const sm = findMatchAcrossDraws(eventData, source.matchId);
+    if (sm && sm.isComplete) {
+      if (sm.isBye) {
+        if (sm.team1Id === 'BYE' || sm.team2Id === 'BYE' || sm.winnerId === 'BYE') return 'BYE';
+      }
+      return sm.loserId;
+    }
+    return null;
+  }
+  return null;
+}
+
+function populateDraw(eventData, draw) {
+  if (!draw || !draw.rounds) return;
+  draw.rounds.forEach(round => {
+    round.forEach(match => {
+      if (match.isComplete && !match.isBye) return;
+      if (!match.team1Id || match.team1Id === 'TBD') {
+        const p = getPlayerIdFromSource(eventData, match.team1Source);
+        if (p) match.team1Id = p;
+      }
+      if (!match.team2Id || match.team2Id === 'TBD') {
+        const p = getPlayerIdFromSource(eventData, match.team2Source);
+        if (p) match.team2Id = p;
+      }
+      if (!match.isComplete) {
+        let byeWinner = null;
+        if (match.team1Id === 'BYE' && match.team2Id && match.team2Id !== 'BYE' && match.team2Id !== 'TBD') byeWinner = match.team2Id;
+        else if (match.team2Id === 'BYE' && match.team1Id && match.team1Id !== 'BYE' && match.team1Id !== 'TBD') byeWinner = match.team1Id;
+        else if (match.team1Id === 'BYE' && match.team2Id === 'BYE') byeWinner = 'BYE';
+        if (byeWinner) {
+          match.winnerId = byeWinner;
+          match.loserId = (byeWinner === match.team1Id) ? match.team2Id : match.team1Id;
+          match.isComplete = true; match.isBye = true;
+          match.score1 = []; match.score2 = [];
+        }
+      }
+      // Feed losers to next bracket
+      if (match.isComplete && match.loserId && match.loserFeedsToNextBracketMatchId && match.nextBracketType) {
+        const target = findMatch(eventData, match.nextBracketType, match.loserFeedsToNextBracketMatchId);
+        if (target && !target.isComplete) {
+          if (match.loserFeedsToNextBracketSlotNumber === 1 && (!target.team1Id || target.team1Id === 'TBD')) target.team1Id = match.loserId;
+          else if (match.loserFeedsToNextBracketSlotNumber === 2 && (!target.team2Id || target.team2Id === 'TBD')) target.team2Id = match.loserId;
+          // Check for bye in target
+          if (!target.isComplete) {
+            let tw = null;
+            if (target.team1Id === 'BYE' && target.team2Id && target.team2Id !== 'BYE' && target.team2Id !== 'TBD') tw = target.team2Id;
+            else if (target.team2Id === 'BYE' && target.team1Id && target.team1Id !== 'BYE' && target.team1Id !== 'TBD') tw = target.team1Id;
+            if (tw) { target.winnerId = tw; target.loserId = (tw === target.team1Id) ? target.team2Id : target.team1Id; target.isComplete = true; target.isBye = true; target.score1 = []; target.score2 = []; }
+          }
+        }
+      }
+    });
+  });
+}
+
+function populateAllDraws(eventData) {
+  for (let i = 0; i < 10; i++) {
+    const snap = JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]);
+    populateDraw(eventData, eventData.mainDraw);
+    populateDraw(eventData, eventData.consolationDraw);
+    populateDraw(eventData, eventData.waterfallConsolationDraw);
+    if (JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]) === snap) break;
+  }
+}
+
+/* --- Shuffle --- */
+function fyShuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function getSchoolAndRank(teamId) {
+  const m = teamId.match(/_s(\d+)_t(\d+)$/);
+  return m ? { schoolNum: parseInt(m[1]), teamRank: parseInt(m[2]) } : { schoolNum: -1, teamRank: -1 };
+}
+
+function shuffleEventTeams(eventData) {
+  const teams = [...eventData.teams];
+  const t1s = [], t2s = [];
+  teams.forEach(t => { const { teamRank } = getSchoolAndRank(t.id); if (teamRank === 1) t1s.push(t); else t2s.push(t); });
+  fyShuffle(t1s); fyShuffle(t2s);
+
+  const arr = new Array(TOTAL_TEAMS);
+  const HALF = TOTAL_TEAMS / 2;
+  const PER_HALF = NUM_SCHOOLS / 2;
+  let topSlots = Array.from({ length: HALF }, (_, i) => i);
+  let botSlots = Array.from({ length: HALF }, (_, i) => i + HALF);
+  fyShuffle(topSlots); fyShuffle(botSlots);
+
+  const loc = {};
+  for (let i = 0; i < PER_HALF; i++) {
+    arr[topSlots.pop()] = t1s[i];
+    loc[getSchoolAndRank(t1s[i].id).schoolNum] = 'top';
+  }
+  for (let i = 0; i < PER_HALF; i++) {
+    arr[botSlots.pop()] = t1s[PER_HALF + i];
+    loc[getSchoolAndRank(t1s[PER_HALF + i].id).schoolNum] = 'bottom';
+  }
+  t2s.forEach(t => {
+    const sn = getSchoolAndRank(t.id).schoolNum;
+    if (loc[sn] === 'top') { arr[botSlots.pop()] = t; }
+    else { arr[topSlots.pop()] = t; }
+  });
+
+  eventData.teams = arr;
+  // Reset all draws
+  [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw].forEach(draw => {
+    if (!draw || !draw.rounds) return;
+    draw.rounds.forEach(round => round.forEach(m => {
+      m.team1Id = null; m.team2Id = null;
+      m.score1 = []; m.score2 = [];
+      m.winnerId = null; m.loserId = null;
+      m.isComplete = false; m.isBye = false;
+    }));
+  });
+}
+
+/* --- CSV Export/Import --- */
+function exportTeamsCSV(tournamentData) {
+  let csv = "EventCode,EventName,TeamID,TeamOriginalSlot,TeamName\r\n";
+  Object.keys(tournamentData).forEach(eid => {
+    const ev = tournamentData[eid];
+    if (ev && ev.teams) {
+      ev.teams.forEach(t => {
+        csv += `"${eid}","${EVENT_CODES[eid]}","${t.id}",${t.originalPlayerSlot},"${t.name.replace(/"/g, '""')}"\r\n`;
+      });
+    }
+  });
+  return csv;
+}
+
+function parseTeamsCSV(csvText) {
+  const lines = csvText.split(/\r\n|\n/);
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const map = {};
+  headers.forEach((h, i) => { map[h] = i; });
+  if (!['EventCode', 'TeamID', 'TeamName'].every(k => k in map)) return { error: 'Missing required columns: EventCode, TeamID, TeamName' };
+  const updates = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const data = []; let cur = '', inQ = false;
+    for (const ch of lines[i]) {
+      if (ch === '"') inQ = !inQ;
+      else if (ch === ',' && !inQ) { data.push(cur.trim().replace(/^"|"$/g, '')); cur = ''; }
+      else cur += ch;
+    }
+    data.push(cur.trim().replace(/^"|"$/g, ''));
+    updates.push({ eventCode: data[map.EventCode], teamId: data[map.TeamID], teamName: data[map.TeamName] });
+  }
+  return { updates };
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   FIREBASE DATA LAYER
+   ═══════════════════════════════════════════════════════════ */
+
+function generateShareCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+async function createTournament(name, userId) {
+  const code = generateShareCode();
+  const ref = await db.collection('tournaments').add({
+    name, ownerId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    shareCode: code, authorizedEditors: []
+  });
+  const tData = createFullTournamentData();
+  const batch = db.batch();
+  Object.keys(tData).forEach(eid => {
+    batch.set(ref.collection('events').doc(eid), tData[eid]);
+  });
+  await batch.commit();
+  return { id: ref.id, shareCode: code };
+}
+
+async function loadTournamentMeta(tournamentId) {
+  const snap = await db.collection('tournaments').doc(tournamentId).get();
+  return snap.exists ? { id: snap.id, ...snap.data() } : null;
+}
+
+async function loadTournamentEvents(tournamentId) {
+  const snap = await db.collection('tournaments').doc(tournamentId).collection('events').get();
+  const data = {};
+  snap.forEach(doc => { data[doc.id] = doc.data(); });
+  return data;
+}
+
+async function saveEventData(tournamentId, eventId, eventData) {
+  await db.collection('tournaments').doc(tournamentId).collection('events').doc(eventId).set(eventData);
+}
+
+async function saveAllEvents(tournamentId, allEvents) {
+  const batch = db.batch();
+  Object.keys(allEvents).forEach(eid => {
+    batch.set(db.collection('tournaments').doc(tournamentId).collection('events').doc(eid), allEvents[eid]);
+  });
+  await batch.commit();
+}
+
+async function findTournamentByShareCode(code) {
+  const snap = await db.collection('tournaments').where('shareCode', '==', code).limit(1).get();
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+
+async function getUserTournaments(userId) {
+  const owned = await db.collection('tournaments').where('ownerId', '==', userId).orderBy('createdAt', 'desc').get();
+  const results = [];
+  owned.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
+  return results;
+}
+
+async function addEditor(tournamentId, email) {
+  // Look up user by email — we store a simple mapping
+  await db.collection('tournaments').doc(tournamentId).update({
+    authorizedEditors: firebase.firestore.FieldValue.arrayUnion(email)
+  });
+}
+
+async function deleteTournament(tournamentId) {
+  // Delete events subcollection first
+  const eventsSnap = await db.collection('tournaments').doc(tournamentId).collection('events').get();
+  const batch = db.batch();
+  eventsSnap.forEach(doc => batch.delete(doc.ref));
+  batch.delete(db.collection('tournaments').doc(tournamentId));
+  await batch.commit();
+}
+
+function subscribeToEvent(tournamentId, eventId, callback) {
+  return db.collection('tournaments').doc(tournamentId).collection('events').doc(eventId).onSnapshot(snap => {
+    if (snap.exists) callback(snap.data());
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   REACT APPLICATION
+   ═══════════════════════════════════════════════════════════ */
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* --- Setup Guide (shown when Firebase not configured) --- */
+function SetupGuide() {
+  return (
+    <div className="auth-wrapper">
+      <div className="config-box">
+        <h2>🏸 Badminton Tournament Manager — Setup Required</h2>
+        <p>This app needs a Firebase project for authentication and database. Follow these steps:</p>
+        <p><strong>1.</strong> Go to <a href="https://console.firebase.google.com" target="_blank" style={{color:'var(--accent)'}}>Firebase Console</a> and create a new project.</p>
+        <p><strong>2.</strong> Enable <strong>Authentication → Email/Password</strong> and <strong>Anonymous</strong> sign-in.</p>
+        <p><strong>3.</strong> Create a <strong>Cloud Firestore</strong> database (start in test mode or use the security rules from firestore.rules).</p>
+        <p><strong>4.</strong> Go to Project Settings → General → Your Apps → Web App. Register an app and copy the config.</p>
+        <p><strong>5.</strong> Open this <code>index.html</code> file and replace the <code>FIREBASE_CONFIG</code> object near the top of the script with your values:</p>
+        <pre>{`const FIREBASE_CONFIG = {
+  apiKey: "AIza...",
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project-id",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abc123"
+};`}</pre>
+        <p><strong>6.</strong> Deploy this file to GitHub Pages or any static host, and you're live!</p>
+        <p style={{marginTop: 16, fontSize: '0.82rem'}}>See the included <code>README.md</code> and <code>firestore.rules</code> files for detailed instructions.</p>
+      </div>
     </div>
+  );
+}
 
-    <div id="tournament-content">
+/* --- Auth Screen --- */
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState('login'); // login | register
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    try {
+      if (mode === 'register') {
+        await auth.createUserWithEmailAndPassword(email, password);
+      } else {
+        await auth.signInWithEmailAndPassword(email, password);
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="auth-wrapper">
+      <div className="card auth-card">
+        <h1>🏸</h1>
+        <h1>Tournament Manager</h1>
+        <p className="subtitle">{mode === 'login' ? 'Sign in to manage tournaments' : 'Create your account'}</p>
+        {error && <div className="auth-error">{error}</div>}
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Email</label>
+            <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@example.com" />
+          </div>
+          <div className="form-group">
+            <label>Password</label>
+            <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" minLength={6} />
+          </div>
+          <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
+            {loading ? <span className="spinner"></span> : (mode === 'login' ? 'Sign In' : 'Create Account')}
+          </button>
+        </form>
+        <div className="auth-toggle">
+          {mode === 'login'
+            ? <>No account? <a onClick={() => { setMode('register'); setError(''); }}>Create one</a></>
+            : <>Have an account? <a onClick={() => { setMode('login'); setError(''); }}>Sign in</a></>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Tournament List --- */
+function TournamentList({ user, onSelect, onSignOut }) {
+  const [tournaments, setTournaments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [showJoin, setShowJoin] = useState(false);
+  const [joinError, setJoinError] = useState('');
+
+  useEffect(() => { loadList(); }, []);
+
+  const loadList = async () => {
+    setLoading(true);
+    const list = await getUserTournaments(user.uid);
+    setTournaments(list);
+    setLoading(false);
+  };
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      const result = await createTournament(newName.trim(), user.uid);
+      setNewName(''); setShowCreate(false);
+      await loadList();
+    } catch (err) { alert('Error creating tournament: ' + err.message); }
+    setCreating(false);
+  };
+
+  const handleJoin = async () => {
+    if (!joinCode.trim()) return;
+    setJoinError('');
+    const meta = await findTournamentByShareCode(joinCode.trim().toUpperCase());
+    if (!meta) { setJoinError('Tournament not found with that code.'); return; }
+    onSelect(meta.id, true);
+  };
+
+  const handleDelete = async (id, name) => {
+    if (!confirm(`Delete tournament "${name}"? This cannot be undone.`)) return;
+    await deleteTournament(id);
+    loadList();
+  };
+
+  return (
+    <div className="app-shell">
+      <div className="top-bar">
+        <h1><span className="icon">🏸</span> Tournament Manager</h1>
+        <div className="top-bar-actions">
+          <span className="user-badge">{user.email}</span>
+          <button className="btn btn-sm" onClick={onSignOut}>Sign Out</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Your Tournaments</h2>
+        <div className="flex-row flex-wrap gap-2 mb-2">
+          <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(!showCreate)}>+ New Tournament</button>
+          <button className="btn btn-sm" onClick={() => setShowJoin(!showJoin)}>Join by Code</button>
         </div>
 
-    <script>
-        const EVENT_CODES = {
-            BS: "Boy's Singles", GS: "Girl's Singles",
-            BD: "Boy's Doubles", GD: "Girl's Doubles",
-            XD: "Mixed Doubles"
-        };
-        const NUM_SCHOOLS = 16;
-        const TEAMS_PER_SCHOOL = 2;
-        const TOTAL_TEAMS_PER_EVENT = NUM_SCHOOLS * TEAMS_PER_SCHOOL; // 32
-        const LOCAL_STORAGE_KEY = 'badmintonTournamentData_v3.4'; // Updated version for new CSV feature
+        {showCreate && (
+          <div className="flex-row mb-2" style={{ maxWidth: 400 }}>
+            <input className="input" placeholder="Tournament name..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} />
+            <button className="btn btn-green btn-sm" onClick={handleCreate} disabled={creating}>{creating ? '...' : 'Create'}</button>
+          </div>
+        )}
 
-        let tournamentData = {};
-        let currentEventId = 'BS'; // Default active event
+        {showJoin && (
+          <div className="mb-2" style={{ maxWidth: 400 }}>
+            <div className="flex-row">
+              <input className="input" placeholder="Enter share code (e.g. AB3XK7NP)" value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} maxLength={8} style={{ fontFamily: 'var(--font-mono)', letterSpacing: 2 }} />
+              <button className="btn btn-sm btn-primary" onClick={handleJoin}>Join</button>
+            </div>
+            {joinError && <div className="auth-error mt-2">{joinError}</div>}
+          </div>
+        )}
 
-        // --- Initialization and Data Persistence ---
-        function initApp() {
-            loadData();
-            setupEventTabs(); 
-            renderCurrentEvent(); 
-            document.getElementById('reset-tournament').addEventListener('click', resetTournamentData);
-            document.getElementById('save-all-teams').addEventListener('click', saveAllTeamNamesFromUI);
-            document.getElementById('shuffle-current-event-teams').addEventListener('click', shuffleCurrentEventTeams);
-            
-            // JSON Import/Export
-            document.getElementById('export-data').addEventListener('click', exportTournamentData);
-            document.getElementById('import-data').addEventListener('click', () => {
-                document.getElementById('import-file-input').click();
-            });
-            document.getElementById('import-file-input').addEventListener('change', handleTournamentDataUpload);
+        {loading ? (
+          <div className="loading-center"><span className="spinner"></span> Loading...</div>
+        ) : (
+          <div className="tournament-grid mt-2">
+            {tournaments.map(t => (
+              <div key={t.id} className="tournament-tile" onClick={() => onSelect(t.id, false)}>
+                <h3>{t.name}</h3>
+                <div className="meta">Code: <strong style={{ fontFamily: 'var(--font-mono)' }}>{t.shareCode}</strong></div>
+                <div className="meta">Created: {t.createdAt ? new Date(t.createdAt.seconds * 1000).toLocaleDateString() : '—'}</div>
+                <button className="btn btn-danger btn-sm mt-2" onClick={e => { e.stopPropagation(); handleDelete(t.id, t.name); }}>Delete</button>
+              </div>
+            ))}
+            {tournaments.length === 0 && <p className="text-dim">No tournaments yet. Create one to get started!</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-            // CSV Team Data Import/Export
-            document.getElementById('export-teams-csv').addEventListener('click', exportTeamsToCSV);
-            document.getElementById('import-teams-csv').addEventListener('click', () => {
-                document.getElementById('import-teams-csv-input').click();
-            });
-            document.getElementById('import-teams-csv-input').addEventListener('change', handleTeamDataCSVUpload);
+/* --- Share / QR Modal --- */
+function ShareModal({ shareCode, onClose }) {
+  const canvasRef = useRef(null);
+  const shareUrl = `${window.location.origin}${window.location.pathname}?share=${shareCode}`;
+
+  useEffect(() => {
+    if (canvasRef.current && typeof QRCode !== 'undefined') {
+      QRCode.toCanvas(canvasRef.current, shareUrl, { width: 220, margin: 2, color: { dark: '#e4e6ef', light: '#1a1d27' } });
+    }
+  }, [shareUrl]);
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => alert('Link copied!')).catch(() => {});
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <h2>📱 Share Tournament (Read-Only)</h2>
+        <p className="text-dim text-sm mb-2">Scan this QR code or share the link. Viewers can see live results but cannot edit.</p>
+        <div className="qr-container">
+          <canvas ref={canvasRef}></canvas>
+          <div className="share-url">{shareUrl}</div>
+          <div className="flex-row">
+            <button className="btn btn-primary btn-sm" onClick={copyUrl}>Copy Link</button>
+            <button className="btn btn-sm" onClick={onClose}>Close</button>
+          </div>
+        </div>
+        <p className="text-dim text-sm text-center mt-2">Share Code: <strong style={{ fontFamily: 'var(--font-mono)', letterSpacing: 2, color: 'var(--accent)' }}>{shareCode}</strong></p>
+      </div>
+    </div>
+  );
+}
+
+/* --- Add Editor Modal --- */
+function AddEditorModal({ tournamentId, onClose }) {
+  const [email, setEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleAdd = async () => {
+    if (!email.trim()) return;
+    setSaving(true);
+    try {
+      await addEditor(tournamentId, email.trim());
+      alert(`${email.trim()} added as editor.`);
+      setEmail('');
+    } catch (err) { alert('Error: ' + err.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <h2>👥 Add Authorized Editor</h2>
+        <p className="text-dim text-sm mb-2">Enter the email of the user you want to grant edit access.</p>
+        <div className="flex-row">
+          <input className="input" placeholder="editor@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+          <button className="btn btn-primary btn-sm" onClick={handleAdd} disabled={saving}>{saving ? '...' : 'Add'}</button>
+        </div>
+        <button className="btn btn-sm mt-4" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+/* --- Match Card --- */
+function MatchCard({ match, eventData, drawType, readOnly, onSave }) {
+  const getName = (teamId) => {
+    if (!teamId) return 'TBD';
+    if (teamId === 'BYE') return 'BYE';
+    const t = eventData.teams.find(x => x.id === teamId);
+    return t ? t.name : teamId;
+  };
+
+  const bo3 = isBo3(match, drawType);
+  const numGames = bo3 ? 3 : 1;
+  const [scores1, setScores1] = useState(Array.from({ length: numGames }, (_, i) => match.score1[i] ?? ''));
+  const [scores2, setScores2] = useState(Array.from({ length: numGames }, (_, i) => match.score2[i] ?? ''));
+
+  useEffect(() => {
+    setScores1(Array.from({ length: numGames }, (_, i) => match.score1[i] ?? ''));
+    setScores2(Array.from({ length: numGames }, (_, i) => match.score2[i] ?? ''));
+  }, [match.score1, match.score2, match.id]);
+
+  const handleSave = () => {
+    const s1 = scores1.map(v => v === '' ? null : parseInt(v));
+    const s2 = scores2.map(v => v === '' ? null : parseInt(v));
+    onSave(match.id, drawType, s1, s2);
+  };
+
+  const canSave = !readOnly && !match.isComplete && match.team1Id && match.team2Id && match.team1Id !== 'BYE' && match.team2Id !== 'BYE';
+  let label = match.customLabel || match.id;
+  if (bo3 && !label.toLowerCase().includes('best of 3')) label += ' (Bo3)';
+
+  const t1cls = match.isComplete ? (match.winnerId === match.team1Id ? 'winner' : 'loser') : '';
+  const t2cls = match.isComplete ? (match.winnerId === match.team2Id ? 'winner' : 'loser') : '';
+
+  return (
+    <div className={`match-card ${match.isComplete ? (match.isBye ? 'bye' : 'complete') : ''}`}>
+      <div className="match-label">{label}</div>
+      <div className={`match-team ${t1cls}`}>
+        <span className="match-team-name">{getName(match.team1Id)}</span>
+        <div className="match-scores">
+          {Array.from({ length: numGames }).map((_, g) => (
+            <input key={g} type="number" className="score-box" min={0} max={30} disabled={match.isComplete || readOnly}
+              value={scores1[g]} onChange={e => { const a = [...scores1]; a[g] = e.target.value; setScores1(a); }} />
+          ))}
+        </div>
+      </div>
+      <div className={`match-team ${t2cls}`}>
+        <span className="match-team-name">{getName(match.team2Id)}</span>
+        <div className="match-scores">
+          {Array.from({ length: numGames }).map((_, g) => (
+            <input key={g} type="number" className="score-box" min={0} max={30} disabled={match.isComplete || readOnly}
+              value={scores2[g]} onChange={e => { const a = [...scores2]; a[g] = e.target.value; setScores2(a); }} />
+          ))}
+        </div>
+      </div>
+      {canSave && <button className="match-save-btn" onClick={handleSave}>Save Score</button>}
+      {match.isBye && <div className="match-bye-text">{getName(match.winnerId)} advances (BYE)</div>}
+      {match.isComplete && !match.isBye && <div className="match-winner-text">✓ {getName(match.winnerId)}</div>}
+    </div>
+  );
+}
+
+/* --- Draw View --- */
+function DrawView({ drawData, eventData, drawType, readOnly, onSave }) {
+  if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
+  const roundLabels = {
+    MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final', 'Championship'],
+    CD: ['CD Round 1', 'CD Round 2', 'CD Playdown 1', 'CD vs QF Losers', 'CD Playdown 2', 'CD Semi-Finals', 'CD Final', '3rd Place'],
+    WCD: ['WCD Round 1', 'WCD Semi-Finals', 'WCD Final']
+  };
+  const labels = roundLabels[drawType] || [];
+
+  return (
+    <div className="draw-container">
+      {drawData.rounds.map((roundMatches, ri) => (
+        <div key={ri} className="round-col">
+          <div className="round-header">{labels[ri] || `Round ${ri + 1}`}</div>
+          {roundMatches.map(m => (
+            <MatchCard key={m.id} match={m} eventData={eventData} drawType={drawType} readOnly={readOnly} onSave={onSave} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* --- Full Tournament View --- */
+function TournamentView({ tournamentId, user, readOnly, onBack }) {
+  const [meta, setMeta] = useState(null);
+  const [events, setEvents] = useState(null);
+  const [activeEvent, setActiveEvent] = useState('BS');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
+  const unsubRef = useRef(null);
+
+  // Load tournament
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const m = await loadTournamentMeta(tournamentId);
+      const ev = await loadTournamentEvents(tournamentId);
+      // Ensure all events exist
+      Object.keys(EVENT_CODES).forEach(eid => {
+        if (!ev[eid]) ev[eid] = createEventObject(eid);
+        // Ensure structure
+        if (!ev[eid].teams || ev[eid].teams.length !== TOTAL_TEAMS) ev[eid].teams = createInitialTeams(eid);
+        if (!ev[eid].mainDraw || !ev[eid].mainDraw.rounds) ev[eid].mainDraw = generateMainDraw();
+        if (!ev[eid].consolationDraw || !ev[eid].consolationDraw.rounds) ev[eid].consolationDraw = generateConsolationDraw();
+        if (!ev[eid].waterfallConsolationDraw || !ev[eid].waterfallConsolationDraw.rounds) ev[eid].waterfallConsolationDraw = generateWaterfallDraw();
+        ev[eid].teams.forEach((t, idx) => {
+          if (t.originalPlayerSlot === undefined) t.originalPlayerSlot = idx;
+          t.mainDrawLosses = t.mainDrawLosses || 0;
+          t.consolationLosses = t.consolationLosses || 0;
+        });
+        populateAllDraws(ev[eid]);
+      });
+      setMeta(m);
+      setEvents(ev);
+      setLoading(false);
+    })();
+  }, [tournamentId]);
+
+  // Real-time listener for read-only mode
+  useEffect(() => {
+    if (!readOnly || !events) return;
+    const unsubs = Object.keys(EVENT_CODES).map(eid =>
+      subscribeToEvent(tournamentId, eid, (data) => {
+        setEvents(prev => {
+          const next = { ...prev, [eid]: data };
+          if (data.teams) populateAllDraws(next[eid]);
+          return next;
+        });
+      })
+    );
+    return () => unsubs.forEach(u => u());
+  }, [readOnly, !!events, tournamentId]);
+
+  const canEdit = !readOnly && meta && user && (meta.ownerId === user.uid || (meta.authorizedEditors && meta.authorizedEditors.includes(user.email)));
+
+  const saveEvent = async (eid, eventData) => {
+    setSaving(true);
+    try { await saveEventData(tournamentId, eid, eventData); }
+    catch (err) { alert('Save error: ' + err.message); }
+    setSaving(false);
+  };
+
+  const handleScoreSave = async (matchId, drawType, s1, s2) => {
+    if (!canEdit) return;
+    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
+    const match = findMatch(ev, drawType, matchId);
+    if (!match) return;
+    match.score1 = s1; match.score2 = s2;
+    const result = determineMatchWinner(match, drawType);
+    if (!result.valid) { alert('Scores incomplete or invalid.'); return; }
+    match.winnerId = result.winnerId;
+    match.loserId = result.loserId;
+    match.isComplete = true;
+    // Track losses
+    if (!match.isOverallChampionship && !match.isThirdPlacePlayoff) {
+      const loser = ev.teams.find(t => t.id === match.loserId);
+      if (loser) {
+        if (drawType === 'MD') loser.mainDrawLosses = (loser.mainDrawLosses || 0) + 1;
+        else if (drawType === 'CD') loser.consolationLosses = (loser.consolationLosses || 0) + 1;
+      }
+    }
+    populateAllDraws(ev);
+    const newEvents = { ...events, [activeEvent]: ev };
+    setEvents(newEvents);
+    await saveEvent(activeEvent, ev);
+  };
+
+  const handleSaveTeams = async () => {
+    if (!canEdit) return;
+    setSaving(true);
+    try { await saveAllEvents(tournamentId, events); alert('All team names saved!'); }
+    catch (err) { alert('Error: ' + err.message); }
+    setSaving(false);
+  };
+
+  const handleShuffle = async () => {
+    if (!canEdit) return;
+    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
+    // Check for played matches
+    const hasPlayed = [ev.mainDraw, ev.consolationDraw, ev.waterfallConsolationDraw].some(draw =>
+      draw && draw.rounds && draw.rounds.some(round => round.some(m => m.isComplete && !m.isBye))
+    );
+    if (hasPlayed) { alert('Cannot shuffle: matches have been played. Reset first.'); return; }
+    if (!confirm(`Shuffle entries for ${EVENT_CODES[activeEvent]}?`)) return;
+    shuffleEventTeams(ev);
+    populateAllDraws(ev);
+    const newEvents = { ...events, [activeEvent]: ev };
+    setEvents(newEvents);
+    await saveEvent(activeEvent, ev);
+    alert('Shuffled!');
+  };
+
+  const handleResetEvent = async () => {
+    if (!canEdit) return;
+    if (!confirm(`Reset ALL data for ${EVENT_CODES[activeEvent]}? This cannot be undone.`)) return;
+    const fresh = createEventObject(activeEvent);
+    const newEvents = { ...events, [activeEvent]: fresh };
+    setEvents(newEvents);
+    await saveEvent(activeEvent, fresh);
+    alert('Event reset.');
+  };
+
+  const handleExportJSON = () => {
+    const blob = new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `tournament_${tournamentId}_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const handleImportJSON = () => {
+    if (!canEdit) return;
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.json';
+    inp.onchange = async (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      if (!confirm('Import will overwrite ALL event data. Continue?')) return;
+      const text = await file.text();
+      try {
+        const imported = JSON.parse(text);
+        Object.keys(EVENT_CODES).forEach(eid => {
+          if (!imported[eid]) imported[eid] = createEventObject(eid);
+          if (!imported[eid].teams || imported[eid].teams.length !== TOTAL_TEAMS) imported[eid].teams = createInitialTeams(eid);
+          if (!imported[eid].mainDraw) imported[eid].mainDraw = generateMainDraw();
+          if (!imported[eid].consolationDraw) imported[eid].consolationDraw = generateConsolationDraw();
+          if (!imported[eid].waterfallConsolationDraw) imported[eid].waterfallConsolationDraw = generateWaterfallDraw();
+          imported[eid].teams.forEach((t, idx) => {
+            if (t.originalPlayerSlot === undefined) t.originalPlayerSlot = idx;
+            t.mainDrawLosses = t.mainDrawLosses || 0;
+            t.consolationLosses = t.consolationLosses || 0;
+          });
+          populateAllDraws(imported[eid]);
+        });
+        setEvents(imported);
+        await saveAllEvents(tournamentId, imported);
+        alert('Imported!');
+      } catch (err) { alert('Invalid file: ' + err.message); }
+    };
+    inp.click();
+  };
+
+  const handleExportCSV = () => {
+    const csv = exportTeamsCSV(events);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `teams_${tournamentId}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const handleImportCSV = () => {
+    if (!canEdit) return;
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.csv';
+    inp.onchange = async (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      if (!confirm('Import team names from CSV?')) return;
+      const text = await file.text();
+      const result = parseTeamsCSV(text);
+      if (result.error) { alert(result.error); return; }
+      const evCopy = JSON.parse(JSON.stringify(events));
+      let count = 0;
+      result.updates.forEach(u => {
+        if (evCopy[u.eventCode] && evCopy[u.eventCode].teams) {
+          const team = evCopy[u.eventCode].teams.find(t => t.id === u.teamId);
+          if (team && team.name !== u.teamName) { team.name = u.teamName; count++; }
         }
+      });
+      if (count > 0) {
+        setEvents(evCopy);
+        await saveAllEvents(tournamentId, evCopy);
+        alert(`${count} team name(s) updated.`);
+      } else { alert('No names changed.'); }
+    };
+    inp.click();
+  };
 
-        function saveData() {
-            try {
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(tournamentData)); 
-            } catch (e) {
-                console.error("Error saving data to localStorage:", e);
-                alert("Could not save data. LocalStorage might be full or disabled.");
-            }
+  const updateTeamName = (eventId, teamId, name) => {
+    setEvents(prev => {
+      const next = { ...prev };
+      next[eventId] = { ...next[eventId], teams: next[eventId].teams.map(t => t.id === teamId ? { ...t, name } : t) };
+      return next;
+    });
+  };
+
+  if (loading) return <div className="loading-center"><span className="spinner"></span> Loading tournament...</div>;
+  if (!meta || !events) return <div className="app-shell"><div className="card"><p>Tournament not found.</p><button className="btn" onClick={onBack}>Back</button></div></div>;
+
+  const ev = events[activeEvent];
+  if (ev) populateAllDraws(ev);
+
+  return (
+    <div className="app-shell">
+      <div className="top-bar">
+        <h1>
+          <span style={{cursor:'pointer', opacity: 0.7, fontSize: '0.9em'}} onClick={onBack}>←</span>
+          <span className="icon">🏸</span>
+          {meta.name}
+        </h1>
+        <div className="top-bar-actions">
+          {saving && <span className="text-dim text-sm">Saving...</span>}
+          {!readOnly && <button className="btn btn-sm btn-purple" onClick={() => setShowShare(true)}>📱 Share QR</button>}
+          {!readOnly && <button className="btn btn-sm" onClick={() => setShowEditor(true)}>👥 Editors</button>}
+          {!readOnly && user && <span className="user-badge">{user.email}</span>}
+          {readOnly && <span className="user-badge" style={{background:'var(--orange-dim)', color:'var(--orange)'}}>View Only</span>}
+          {!readOnly && <button className="btn btn-sm" onClick={onBack}>My Tournaments</button>}
+        </div>
+      </div>
+
+      {readOnly && <div className="readonly-banner">🔒 Read-only view — scores and teams cannot be edited</div>}
+
+      {canEdit && (
+        <div className="controls-bar">
+          <button className="btn btn-green btn-sm" onClick={handleSaveTeams}>💾 Save Teams</button>
+          <button className="btn btn-orange btn-sm" onClick={handleShuffle}>🔀 Shuffle Event</button>
+          <button className="btn btn-danger btn-sm" onClick={handleResetEvent}>🗑 Reset Event</button>
+          <span className="sep"></span>
+          <button className="btn btn-sm" onClick={handleExportJSON}>⬇ Export JSON</button>
+          <button className="btn btn-sm" onClick={handleImportJSON}>⬆ Import JSON</button>
+          <span className="sep"></span>
+          <button className="btn btn-sm" onClick={handleExportCSV}>⬇ Teams CSV</button>
+          <button className="btn btn-sm" onClick={handleImportCSV}>⬆ Teams CSV</button>
+        </div>
+      )}
+
+      <div className="event-tabs">
+        {Object.keys(EVENT_CODES).map(eid => (
+          <button key={eid} className={`event-tab ${eid === activeEvent ? 'active' : ''}`} onClick={() => setActiveEvent(eid)}>
+            {EVENT_CODES[eid]}
+          </button>
+        ))}
+      </div>
+
+      {ev && (
+        <>
+          {/* Team Names */}
+          <div className="card">
+            <h3>Team Entries — {EVENT_CODES[activeEvent]}</h3>
+            <div className="team-grid">
+              {ev.teams.map((team, idx) => (
+                <div key={team.id} className="team-row">
+                  <label>{idx + 1}.</label>
+                  <input value={team.name} disabled={!canEdit}
+                    onChange={e => updateTeamName(activeEvent, team.id, e.target.value)} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Main Draw */}
+          <div className="card draw-section">
+            <h3>Main Draw</h3>
+            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} />
+          </div>
+
+          {/* Consolation Draw */}
+          <div className="card draw-section">
+            <h3>Consolation Draw</h3>
+            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} />
+          </div>
+
+          {/* Waterfall Consolation */}
+          <div className="card draw-section">
+            <h3>Waterfall Consolations</h3>
+            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} />
+          </div>
+        </>
+      )}
+
+      {showShare && meta && <ShareModal shareCode={meta.shareCode} onClose={() => setShowShare(false)} />}
+      {showEditor && <AddEditorModal tournamentId={tournamentId} onClose={() => setShowEditor(false)} />}
+    </div>
+  );
+}
+
+/* --- Read-Only Entry via share code --- */
+function ReadOnlyLoader({ shareCode }) {
+  const [tournamentId, setTournamentId] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        // Sign in anonymously for read access
+        if (!auth.currentUser) {
+          await auth.signInAnonymously();
         }
-
-        function loadData() {
-            const statusEl = document.getElementById('loading-status');
-            if(statusEl) statusEl.style.display = 'block';
-            try {
-                const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
-                if (storedData) {
-                    tournamentData = JSON.parse(storedData);
-                    Object.keys(EVENT_CODES).forEach(eventId => { 
-                        if (!tournamentData[eventId]) {
-                            tournamentData[eventId] = createEventObject(eventId);
-                        } else { 
-                            if (!tournamentData[eventId].teams || !Array.isArray(tournamentData[eventId].teams) || tournamentData[eventId].teams.length !== TOTAL_TEAMS_PER_EVENT) {
-                                tournamentData[eventId].teams = createInitialTeams(eventId);
-                            }
-                            // Ensure team objects have necessary properties (originalPlayerSlot might be missing from older data)
-                            tournamentData[eventId].teams.forEach((team, index) => {
-                                if (team.originalPlayerSlot === undefined) {
-                                    team.originalPlayerSlot = index; // Assuming initial load order was their original slot.
-                                }
-                                team.mainDrawLosses = team.mainDrawLosses || 0;
-                                team.consolationLosses = team.consolationLosses || 0;
-                            });
-
-                            const mdRounds = tournamentData[eventId].mainDraw && tournamentData[eventId].mainDraw.rounds;
-                            if (!mdRounds || !Array.isArray(mdRounds) || mdRounds.length < 6) { // 5 rounds + 1 overall final
-                                tournamentData[eventId].mainDraw = generateMainDrawStructure(eventId);
-                            }
-                            const cdRounds = tournamentData[eventId].consolationDraw && tournamentData[eventId].consolationDraw.rounds;
-                            if (!cdRounds || !Array.isArray(cdRounds) || cdRounds.length < 8) { // 7 rounds + 1 third place
-                                tournamentData[eventId].consolationDraw = generateConsolationDrawStructure(eventId);
-                            }
-                            const wfcdRounds = tournamentData[eventId].waterfallConsolationDraw && tournamentData[eventId].waterfallConsolationDraw.rounds;
-                            if (!wfcdRounds || !Array.isArray(wfcdRounds) || wfcdRounds.length < 3) { // 2 rounds + 1 final for WCD
-                                tournamentData[eventId].waterfallConsolationDraw = generateWaterfallConsolationDrawStructure(eventId);
-                            }
-                        }
-                    });
-                } else {
-                    initializeNewTournament();
-                }
-            } catch (e) {
-                console.error("Error loading data from localStorage:", e);
-                initializeNewTournament(); 
-            }
-            if(statusEl) statusEl.style.display = 'none';
-        }
-        
-        function initializeNewTournament() {
-            tournamentData = {};
-            Object.keys(EVENT_CODES).forEach(eventId => {
-                tournamentData[eventId] = createEventObject(eventId);
-            });
-            saveData();
-        }
-
-        function createEventObject(eventId) {
-            return {
-                id: eventId,
-                name: EVENT_CODES[eventId],
-                teams: createInitialTeams(eventId),
-                mainDraw: generateMainDrawStructure(eventId),
-                consolationDraw: generateConsolationDrawStructure(eventId),
-                waterfallConsolationDraw: generateWaterfallConsolationDrawStructure(eventId), // Added
-                setupComplete: false 
-            };
-        }
-
-        function createInitialTeams(eventId) {
-            const teams = [];
-            for (let i = 0; i < NUM_SCHOOLS; i++) {
-                for (let j = 0; j < TEAMS_PER_SCHOOL; j++) {
-                    const teamId = `${eventId}_s${i+1}_t${j+1}`;
-                    teams.push({
-                        id: teamId,
-                        name: `School ${i+1} - Team ${j+1}`,
-                        originalPlayerSlot: teams.length, 
-                        mainDrawLosses: 0,
-                        consolationLosses: 0
-                    });
-                }
-            }
-            return teams;
-        }
-
-        function resetTournamentData() {
-            if (confirm("Are you sure you want to reset all tournament data? This cannot be undone.")) {
-                localStorage.removeItem(LOCAL_STORAGE_KEY);
-                initializeNewTournament();
-                renderCurrentEvent(); 
-                alert("Tournament data has been reset.");
-            }
-        }
-
-        // --- Full Tournament Import/Export Feature (JSON) ---
-        function exportTournamentData() {
-            try {
-                const jsonData = JSON.stringify(tournamentData, null, 2);
-                const blob = new Blob([jsonData], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
-                a.download = `badminton_tournament_data_FULL_${timestamp}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                alert("Full tournament data exported successfully!");
-            } catch (e) {
-                console.error("Error exporting full data:", e);
-                alert("Could not export full data. See console for details.");
-            }
-        }
-
-        function handleTournamentDataUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            if (!confirm("Importing FULL tournament data will overwrite ALL existing tournament data. Are you sure you want to proceed?")) {
-                event.target.value = null; return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const importedRawData = JSON.parse(e.target.result);
-                    const validatedData = {};
-                    let importSuccessful = true;
-
-                    Object.keys(EVENT_CODES).forEach(appEventId => {
-                        if (importedRawData[appEventId]) {
-                            const eventData = JSON.parse(JSON.stringify(importedRawData[appEventId])); // Deep copy
-
-                            // Validate teams
-                            if (!eventData.teams || !Array.isArray(eventData.teams) || eventData.teams.length !== TOTAL_TEAMS_PER_EVENT) {
-                                console.warn(`Teams for event ${appEventId} are missing or malformed. Re-initializing.`);
-                                eventData.teams = createInitialTeams(appEventId);
-                            } else {
-                                eventData.teams.forEach((team, index) => {
-                                    if (typeof team.id !== 'string' || typeof team.name !== 'string') {
-                                        console.warn(`Team ${index} in event ${appEventId} malformed. Re-initializing all teams for this event.`);
-                                        eventData.teams = createInitialTeams(appEventId); return; // Exit forEach for this event's teams
-                                    }
-                                    team.mainDrawLosses = team.mainDrawLosses || 0;
-                                    team.consolationLosses = team.consolationLosses || 0;
-                                    if (team.originalPlayerSlot === undefined) { // Add originalPlayerSlot if missing
-                                        const originalTeam = createInitialTeams(appEventId).find(it => it.id === team.id);
-                                        team.originalPlayerSlot = originalTeam ? originalTeam.originalPlayerSlot : index;
-                                    }
-                                });
-                            }
-
-                            // Validate draws
-                            const mdRounds = eventData.mainDraw && eventData.mainDraw.rounds;
-                            if (!mdRounds || !Array.isArray(mdRounds) || mdRounds.length < 6) {
-                                console.warn(`Main draw for ${appEventId} malformed. Re-generating.`);
-                                eventData.mainDraw = generateMainDrawStructure(appEventId);
-                            }
-
-                            const cdRounds = eventData.consolationDraw && eventData.consolationDraw.rounds;
-                            if (!cdRounds || !Array.isArray(cdRounds) || cdRounds.length < 8) {
-                                console.warn(`Consolation draw for ${appEventId} malformed. Re-generating.`);
-                                eventData.consolationDraw = generateConsolationDrawStructure(appEventId);
-                            }
-                            
-                            const wfcdRounds = eventData.waterfallConsolationDraw && eventData.waterfallConsolationDraw.rounds;
-                            if (!wfcdRounds || !Array.isArray(wfcdRounds) || wfcdRounds.length < 3) {
-                                console.warn(`Waterfall Consolation draw for ${appEventId} missing or malformed. Re-generating.`);
-                                eventData.waterfallConsolationDraw = generateWaterfallConsolationDrawStructure(appEventId);
-                            }
-                            
-                            // Validate matches within draws
-                            [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw].forEach(draw => {
-                                if (draw && draw.rounds) {
-                                    draw.rounds.forEach(round => {
-                                        round.forEach(match => {
-                                            if (!Array.isArray(match.score1)) match.score1 = [];
-                                            if (!Array.isArray(match.score2)) match.score2 = [];
-                                            match.isComplete = !!match.isComplete;
-                                            match.isBye = !!match.isBye;
-                                        });
-                                    });
-                                }
-                            });
-                            validatedData[appEventId] = eventData;
-                        } else {
-                            console.warn(`Event ${appEventId} not in imported data. Initializing as new.`);
-                            validatedData[appEventId] = createEventObject(appEventId);
-                        }
-                    });
-                    
-                    if (Object.keys(validatedData).length === 0 && Object.keys(EVENT_CODES).length > 0) {
-                        alert("Import failed: No recognizable tournament data for configured events.");
-                        importSuccessful = false;
-                    }
-
-                    if (importSuccessful) {
-                        tournamentData = validatedData;
-                        saveData();
-                        alert("Full tournament data imported successfully! The page will now be re-rendered.");
-                        
-                        const statusEl = document.getElementById('loading-status');
-                        if(statusEl) statusEl.style.display = 'block';
-                        
-                        setupEventTabs(); 
-                        
-                        let firstEventId = Object.keys(EVENT_CODES)[0];
-                        if (!EVENT_CODES[currentEventId] || !tournamentData[currentEventId]) {
-                            currentEventId = firstEventId;
-                        }
-                        switchEventTab(currentEventId); // This will call renderCurrentEvent
-
-                        if(statusEl) statusEl.style.display = 'none';
-                    }
-                } catch (e) {
-                    console.error("Error processing imported JSON file:", e);
-                    alert("Failed to import data. File might be corrupted or not in correct JSON format.");
-                } finally {
-                    event.target.value = null; 
-                }
-            };
-            reader.onerror = function() {
-                alert("Error reading the file."); event.target.value = null;
-            };
-            reader.readAsText(file);
-        }
-
-        // --- Team Data Import/Export (CSV) ---
-        function exportTeamsToCSV() {
-            let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += "EventCode,EventName,TeamID,TeamOriginalSlot,TeamName\r\n"; // Headers
-
-            Object.keys(tournamentData).forEach(eventId => {
-                const eventData = tournamentData[eventId];
-                if (eventData && eventData.teams) {
-                    eventData.teams.forEach(team => {
-                        const row = [
-                            `"${eventId}"`,
-                            `"${EVENT_CODES[eventId]}"`,
-                            `"${team.id}"`,
-                            team.originalPlayerSlot, // This is the original index, helpful for reference
-                            `"${team.name.replace(/"/g, '""')}"` // Escape double quotes in team name
-                        ].join(",");
-                        csvContent += row + "\r\n";
-                    });
-                }
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
-            link.setAttribute("download", `badminton_team_names_${timestamp}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            alert("Team names CSV exported!");
-        }
-
-        function handleTeamDataCSVUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            if (!confirm("Importing team names from CSV will overwrite existing team names. Are you sure? This will NOT change tournament structure or scores.")) {
-                event.target.value = null; // Clear the file input
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const csvText = e.target.result;
-                    const lines = csvText.split(/\r\n|\n/);
-                    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '')); // Trim and remove quotes from headers
-
-                    const expectedHeaders = ["EventCode", "TeamID", "TeamName"];
-                    const headerMap = {};
-                    headers.forEach((h, i) => {
-                        if (expectedHeaders.includes(h)) {
-                            headerMap[h] = i;
-                        }
-                    });
-
-                    if (!expectedHeaders.every(eh => eh in headerMap)) {
-                        alert(`CSV Import Error: Missing one or more required headers. Expected: ${expectedHeaders.join(", ")}. Found: ${headers.join(", ")}`);
-                        return;
-                    }
-                    
-                    let teamsUpdatedCount = 0;
-                    let errors = [];
-
-                    for (let i = 1; i < lines.length; i++) {
-                        if (lines[i].trim() === "") continue; // Skip empty lines
-
-                        // Basic CSV parsing (split by comma, handle quoted fields)
-                        const data = [];
-                        let currentField = '';
-                        let inQuotes = false;
-                        for (let char of lines[i]) {
-                            if (char === '"') {
-                                inQuotes = !inQuotes;
-                            } else if (char === ',' && !inQuotes) {
-                                data.push(currentField.trim().replace(/^"|"$/g, ''));
-                                currentField = '';
-                            } else {
-                                currentField += char;
-                            }
-                        }
-                        data.push(currentField.trim().replace(/^"|"$/g, '')); // Add the last field
-
-                        const eventCode = data[headerMap["EventCode"]];
-                        const teamId = data[headerMap["TeamID"]];
-                        const teamName = data[headerMap["TeamName"]];
-
-                        if (!eventCode || !teamId || teamName === undefined || teamName === null) {
-                            errors.push(`Skipping line ${i+1}: Missing required data (EventCode, TeamID, or TeamName).`);
-                            continue;
-                        }
-
-                        if (tournamentData[eventCode] && tournamentData[eventCode].teams) {
-                            const teamToUpdate = tournamentData[eventCode].teams.find(t => t.id === teamId);
-                            if (teamToUpdate) {
-                                if (teamToUpdate.name !== teamName) {
-                                    teamToUpdate.name = teamName;
-                                    teamsUpdatedCount++;
-                                }
-                            } else {
-                                errors.push(`Warning on line ${i+1}: TeamID "${teamId}" not found in event "${eventCode}".`);
-                            }
-                        } else {
-                            errors.push(`Warning on line ${i+1}: EventCode "${eventCode}" not found in tournament data.`);
-                        }
-                    }
-
-                    if (teamsUpdatedCount > 0) {
-                        saveData();
-                        renderCurrentEvent(); // Re-render to show updated names
-                        alert(`${teamsUpdatedCount} team name(s) updated successfully from CSV.`);
-                    } else {
-                        alert("No team names were updated. Ensure EventCode, TeamID, and TeamName match existing data or provide new names.");
-                    }
-                    if (errors.length > 0) {
-                        console.warn("CSV Import Warnings/Errors:\n" + errors.join("\n"));
-                        alert("Some issues occurred during CSV import. Check the browser console (F12) for details.");
-                    }
-
-                } catch (err) {
-                    console.error("Error processing CSV file:", err);
-                    alert("Failed to import team names from CSV. File might be malformed or an unexpected error occurred.");
-                } finally {
-                    event.target.value = null; // Clear the file input
-                }
-            };
-            reader.onerror = function() {
-                alert("Error reading the CSV file.");
-                event.target.value = null; // Clear the file input
-            };
-            reader.readAsText(file);
-        }
-
-
-        // --- Shuffle Feature ---
-        function getSchoolAndTeamRank(teamId) {
-            const match = teamId.match(/_s(\d+)_t(\d+)$/);
-            if (match) {
-                return {
-                    schoolNum: parseInt(match[1]),
-                    teamRank: parseInt(match[2])
-                };
-            }
-            console.error("Could not parse school/team rank from ID:", teamId);
-            return { schoolNum: -1, teamRank: -1 }; 
-        }
-
-        function fyShuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
-        
-        function shuffleCurrentEventTeams() {
-            const eventData = tournamentData[currentEventId];
-            if (!eventData) { alert("No event selected or data not found."); return; }
-
-            let actionTakenInEvent = false;
-            const drawsToCheck = [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw];
-
-            for (const draw of drawsToCheck) {
-                if (draw && draw.rounds) {
-                    for (const round of draw.rounds) {
-                        for (const match of round) {
-                            if (match.isComplete && !match.isBye) { actionTakenInEvent = true; break; }
-                            const hasEnteredScores = (m) => (m.score1 && m.score1.some(s => s !== null && s !== undefined && String(s).trim() !== '')) || (m.score2 && m.score2.some(s => s !== null && s !== undefined && String(s).trim() !== ''));
-                            if (!match.isComplete && hasEnteredScores(match) && match.team1Id && match.team2Id && match.team1Id !== 'BYE' && match.team2Id !== 'BYE') {
-                                actionTakenInEvent = true;
-                                alert("Cannot shuffle: Scores partially entered. Clear scores or reset event."); return;
-                            }
-                        }
-                    }
-                    if (actionTakenInEvent) break;
-                }
-            }
-
-            if (actionTakenInEvent) { alert("Cannot shuffle: Matches played or scores entered. Reset event to shuffle."); return; }
-            if (!confirm(`Shuffle entries for ${EVENT_CODES[currentEventId]}? This reorders seeding and clears unplayed matches, applying new placement rules.`)) return;
-
-            const originalTeams = [...eventData.teams]; 
-            const team1sList = [];
-            const team2sList = [];
-
-            originalTeams.forEach(team => {
-                const { teamRank } = getSchoolAndTeamRank(team.id);
-                if (teamRank === 1) {
-                    team1sList.push(team);
-                } else if (teamRank === 2) {
-                    team2sList.push(team);
-                }
-            });
-
-            fyShuffle(team1sList);
-            fyShuffle(team2sList);
-
-            const finalArrangement = new Array(TOTAL_TEAMS_PER_EVENT);
-            const HALF_SIZE = TOTAL_TEAMS_PER_EVENT / 2; // 16
-            const TEAMS_OF_TYPE_PER_HALF = NUM_SCHOOLS / 2; // 8
-
-            let topHalfSlots = Array.from({ length: HALF_SIZE }, (_, i) => i); // 0-15
-            let bottomHalfSlots = Array.from({ length: HALF_SIZE }, (_, i) => i + HALF_SIZE); // 16-31
-            fyShuffle(topHalfSlots);
-            fyShuffle(bottomHalfSlots);
-
-            const schoolTeam1Location = {}; // { schoolNum: 'top' | 'bottom' }
-
-            for (let i = 0; i < TEAMS_OF_TYPE_PER_HALF; i++) {
-                const team1_top = team1sList[i];
-                const slot_top = topHalfSlots.pop();
-                finalArrangement[slot_top] = team1_top;
-                const { schoolNum: schoolNum_top } = getSchoolAndTeamRank(team1_top.id);
-                schoolTeam1Location[schoolNum_top] = 'top';
-            }
-            for (let i = 0; i < TEAMS_OF_TYPE_PER_HALF; i++) {
-                const team1_bottom = team1sList[TEAMS_OF_TYPE_PER_HALF + i];
-                const slot_bottom = bottomHalfSlots.pop();
-                finalArrangement[slot_bottom] = team1_bottom;
-                const { schoolNum: schoolNum_bottom } = getSchoolAndTeamRank(team1_bottom.id);
-                schoolTeam1Location[schoolNum_bottom] = 'bottom';
-            }
-            
-            team2sList.forEach(team2 => {
-                const { schoolNum } = getSchoolAndTeamRank(team2.id);
-                if (schoolTeam1Location[schoolNum] === 'top') { 
-                    if (bottomHalfSlots.length === 0) {
-                        console.error("Error: No bottom half slots left for Team 2. This shouldn't happen.");
-                        const fallbackSlot = finalArrangement.indexOf(undefined);
-                        if (fallbackSlot !== -1) finalArrangement[fallbackSlot] = team2;
-                        return;
-                    }
-                    const slot = bottomHalfSlots.pop();
-                    finalArrangement[slot] = team2;
-                } else { 
-                    if (topHalfSlots.length === 0) {
-                        console.error("Error: No top half slots left for Team 2. This shouldn't happen.");
-                        const fallbackSlot = finalArrangement.indexOf(undefined);
-                        if (fallbackSlot !== -1) finalArrangement[fallbackSlot] = team2;
-                        return;
-                    }
-                    const slot = topHalfSlots.pop();
-                    finalArrangement[slot] = team2;
-                }
-            });
-            
-            eventData.teams = finalArrangement;
-
-
-            function resetDrawMatchAssignments(draw) {
-                if (draw && draw.rounds) {
-                    draw.rounds.forEach(round => {
-                        round.forEach(match => {
-                            match.team1Id = null; match.team2Id = null;
-                            match.score1 = []; match.score2 = [];
-                            match.winnerId = null; match.loserId = null;
-                            match.isComplete = false; match.isBye = false; 
-                        });
-                    });
-                }
-            }
-
-            resetDrawMatchAssignments(eventData.mainDraw);
-            resetDrawMatchAssignments(eventData.consolationDraw);
-            resetDrawMatchAssignments(eventData.waterfallConsolationDraw);
-
-            saveData();
-            renderCurrentEvent();
-            alert(`${EVENT_CODES[currentEventId]} entries shuffled according to new rules. Draws updated.`);
-        }
-
-
-        // --- Draw Generation Logic ---
-        function createMatchObject(id, round, matchInRound, team1Source = null, team2Source = null, 
-                                    isSF = false, isFinal = false, customLabel = "",
-                                    loserFeedsToNextBracketMatchId = null, loserFeedsToNextBracketSlotNumber = null, nextBracketType = null) {
-            return {
-                id, round, matchInRound, customLabel,
-                team1Id: null, team2Id: null,
-                team1Source, team2Source, 
-                score1: [], score2: [],
-                winnerId: null, loserId: null,
-                isBye: false, isComplete: false,
-                isSF, isFinal, 
-                isOverallChampionship: false,
-                isThirdPlacePlayoff: false, 
-                loserFeedsToNextBracketMatchId, 
-                loserFeedsToNextBracketSlotNumber,
-                nextBracketType
-            };
-        }
-
-        function generateMainDrawStructure(eventId) {
-            const rounds = [];
-            const numTeams = TOTAL_TEAMS_PER_EVENT; 
-            let teamsInRound = numTeams;
-            let roundNum = 1;
-
-            // R1: 16 matches
-            let roundMatches = [];
-            for (let i = 0; i < teamsInRound / 2; i++) {
-                const match = createMatchObject(`M${roundNum}.${i+1}`, roundNum, i + 1, 
-                    { type: 'seed', slot: i * 2 }, { type: 'seed', slot: i * 2 + 1 }, 
-                    false, false, `MD R1.${i+1}`,
-                    `CD1.${Math.floor(i/2) + 1}`, (i % 2 === 0) ? 1 : 2, 'CD');
-                roundMatches.push(match);
-            }
-            rounds.push(roundMatches); teamsInRound /= 2; roundNum++; 
-
-            // R2: 8 matches
-            roundMatches = [];
-            for (let i = 0; i < teamsInRound / 2; i++) {
-                const match = createMatchObject(`M${roundNum}.${i+1}`, roundNum, i + 1,
-                    { type: 'winner', matchId: `M${roundNum-1}.${i*2+1}` }, { type: 'winner', matchId: `M${roundNum-1}.${i*2+2}` }, 
-                    false, false, `MD R2.${i+1}`,
-                    `CD2.${i + 1}`, 2, 'CD'); // Loser feeds to slot 2 of CD2 match
-                roundMatches.push(match);
-            }
-            rounds.push(roundMatches); teamsInRound /= 2; roundNum++; 
-
-            // R3 (QF): 4 matches
-            roundMatches = [];
-            for (let i = 0; i < teamsInRound / 2; i++) {
-                const match = createMatchObject(`M${roundNum}.${i+1}`, roundNum, i + 1,
-                    { type: 'winner', matchId: `M${roundNum-1}.${i*2+1}` }, { type: 'winner', matchId: `M${roundNum-1}.${i*2+2}` }, 
-                    false, false, `MD QF.${i+1}`,
-                    `CD4.${i + 1}`, 2, 'CD'); // Loser feeds to slot 2 of CD4 match
-                roundMatches.push(match);
-            }
-            rounds.push(roundMatches); teamsInRound /= 2; roundNum++; 
-
-            // R4 (SF): 2 matches (Best of 3)
-            roundMatches = [];
-            for (let i = 0; i < teamsInRound / 2; i++) {
-                const match = createMatchObject(`M${roundNum}.${i+1}`, roundNum, i + 1,
-                    { type: 'winner', matchId: `M${roundNum-1}.${i*2+1}` }, { type: 'winner', matchId: `M${roundNum-1}.${i*2+2}` },
-                    true, false, `MD SF.${i+1}`,
-                    `CD6.${i + 1}`, 2, 'CD'); // Loser feeds to slot 2 of CD6 match
-                roundMatches.push(match);
-            }
-            rounds.push(roundMatches); teamsInRound /= 2; roundNum++; 
-
-            // R5 (Final): 1 match (Best of 3)
-            roundMatches = [];
-            const mdFinal = createMatchObject(`M${roundNum}.1`, roundNum, 1,
-                { type: 'winner', matchId: `M${roundNum-1}.1` }, { type: 'winner', matchId: `M${roundNum-1}.2` },
-                false, true, `MD Final`); 
-            roundMatches.push(mdFinal);
-            rounds.push(roundMatches); roundNum++;
-
-            // R6 (Overall Championship): 1 match (Best of 3)
-            roundMatches = [];
-            const overallChampMatch = createMatchObject(`M${roundNum}.1`, roundNum, 1,
-                { type: 'winner', matchId: 'M5.1' }, // Winner of MD Final
-                { type: 'winner', matchId: 'CD7.1' }, // Winner of CD Final
-                false, true, `Overall Championship`);
-            overallChampMatch.isOverallChampionship = true;
-            roundMatches.push(overallChampMatch);
-            rounds.push(roundMatches);
-            
-            return { rounds };
-        }
-
-        function generateConsolationDrawStructure(eventId) {
-            const rounds = [];
-            let roundNum = 1; 
-
-            // CD-R1: 8 matches (for 16 L_M1) - Losers feed to WCD R1
-            let roundMatches = [];
-            for (let i = 0; i < 8; i++) {
-                roundMatches.push(createMatchObject(`CD${roundNum}.${i+1}`, roundNum, i+1, 
-                    { type: 'loser', matchId: `M1.${i*2+1}` }, 
-                    { type: 'loser', matchId: `M1.${i*2+2}` }, 
-                    false, false, `CD R1.${i+1}`,
-                    `WCD1.${Math.floor(i/2) + 1}`, (i % 2 === 0) ? 1 : 2, 'WCD')); // Feed to WCD
-            }
-            rounds.push(roundMatches); roundNum++;
-
-            // CD-R2: 8 matches (8 W_C1 vs 8 L_M2)
-            roundMatches = [];
-            for (let i = 0; i < 8; i++) {
-                roundMatches.push(createMatchObject(`CD${roundNum}.${i+1}`, roundNum, i+1,
-                    { type: 'winner', matchId: `CD${roundNum-1}.${i+1}` },
-                    { type: 'loser', matchId: `M2.${i+1}` }, 
-                    false, false, `CD R2.${i+1}`));
-            }
-            rounds.push(roundMatches); roundNum++;
-
-            // CD-R3 (Play-down for 8 W_C2): 4 matches
-            roundMatches = [];
-            for (let i = 0; i < 4; i++) {
-                roundMatches.push(createMatchObject(`CD${roundNum}.${i+1}`, roundNum, i+1, 
-                    { type: 'winner', matchId: `CD${roundNum-1}.${i*2+1}` },
-                    { type: 'winner', matchId: `CD${roundNum-1}.${i*2+2}` },
-                    false, false, `CD R3.${i+1} (Playdown)`));
-            }
-            rounds.push(roundMatches); roundNum++;
-
-            // CD-R4 (4 W_C3 vs 4 L_M3/QF): 4 matches
-            roundMatches = [];
-            for (let i = 0; i < 4; i++) {
-                roundMatches.push(createMatchObject(`CD${roundNum}.${i+1}`, roundNum, i+1,
-                    { type: 'winner', matchId: `CD${roundNum-1}.${i+1}` },
-                    { type: 'loser', matchId: `M3.${i+1}` }, 
-                    false, false, `CD R4.${i+1} (vs QFL)`));
-            }
-            rounds.push(roundMatches); roundNum++;
-
-            // CD-R5 (Play-down for 4 W_C4): 2 matches
-            roundMatches = [];
-            for (let i = 0; i < 2; i++) {
-                roundMatches.push(createMatchObject(`CD${roundNum}.${i+1}`, roundNum, i+1, 
-                    { type: 'winner', matchId: `CD${roundNum-1}.${i*2+1}` },
-                    { type: 'winner', matchId: `CD${roundNum-1}.${i*2+2}` },
-                    false, false, `CD R5.${i+1} (Playdown)`));
-            }
-            rounds.push(roundMatches); roundNum++;
-
-            // CD-R6 (2 W_C5 vs 2 L_M4/SF): 2 matches (CD Semis)
-            roundMatches = [];
-            for (let i = 0; i < 2; i++) {
-                roundMatches.push(createMatchObject(`CD${roundNum}.${i+1}`, roundNum, i+1,
-                    { type: 'winner', matchId: `CD${roundNum-1}.${i+1}` },
-                    { type: 'loser', matchId: `M4.${i+1}` }, 
-                    false, false, `CD SF.${i+1}`));
-            }
-            rounds.push(roundMatches); roundNum++;
-
-            // CD-R7 (Consolation Final): 1 match
-            roundMatches = [];
-            const cdFinal = createMatchObject(`CD${roundNum}.1`, roundNum, 1,
-                { type: 'winner', matchId: `CD${roundNum-1}.1` },
-                { type: 'winner', matchId: `CD${roundNum-1}.2` },
-                false, true, `CD Final`); // isFinal for label, Bo3 for CD final
-            roundMatches.push(cdFinal);
-            rounds.push(roundMatches); roundNum++;
-
-            // CD-R8 (Third Place Playoff): 1 match (single game)
-            roundMatches = [];
-            const thirdPlaceMatch = createMatchObject(`CD${roundNum}.1`, roundNum, 1,
-                { type: 'loser', matchId: 'M5.1' }, // Loser of MD Final
-                { type: 'loser', matchId: 'CD7.1' }, // Loser of CD Final
-                false, false, `3rd Place Playoff`); 
-            thirdPlaceMatch.isThirdPlacePlayoff = true;
-            roundMatches.push(thirdPlaceMatch);
-            rounds.push(roundMatches);
-
-            return { rounds };
-        }
-
-        function generateWaterfallConsolationDrawStructure(eventId) {
-            const rounds = [];
-            let roundNum = 1;
-            const numFeeders = 8; // Losers from CD R1 (8 matches -> 8 losers)
-
-            // WCD-R1: 4 matches (for 8 L_CD1)
-            let roundMatches = [];
-            for (let i = 0; i < numFeeders / 2; i++) { // 4 matches
-                roundMatches.push(createMatchObject(`WCD${roundNum}.${i+1}`, roundNum, i+1,
-                    { type: 'loser', matchId: `CD1.${i*2+1}` }, // Loser of CD1.1, CD1.3, CD1.5, CD1.7
-                    { type: 'loser', matchId: `CD1.${i*2+2}` }, // Loser of CD1.2, CD1.4, CD1.6, CD1.8
-                    false, false, `WCD R1.${i+1}`));
-            }
-            rounds.push(roundMatches); roundNum++;
-
-            // WCD-R2 (SF): 2 matches
-            roundMatches = [];
-            for (let i = 0; i < (numFeeders / 2) / 2; i++) { // 2 matches
-                roundMatches.push(createMatchObject(`WCD${roundNum}.${i+1}`, roundNum, i+1,
-                    { type: 'winner', matchId: `WCD${roundNum-1}.${i*2+1}` },
-                    { type: 'winner', matchId: `WCD${roundNum-1}.${i*2+2}` },
-                    false, false, `WCD SF.${i+1}`));
-            }
-            rounds.push(roundMatches); roundNum++;
-
-            // WCD-R3 (Final): 1 match
-            roundMatches = [];
-            const wcdFinal = createMatchObject(`WCD${roundNum}.1`, roundNum, 1,
-                { type: 'winner', matchId: `WCD${roundNum-1}.1` },
-                { type: 'winner', matchId: `WCD${roundNum-1}.2` },
-                false, false, `WCD Final`); // Assuming single game, isFinal=false unless Bo3 needed
-            roundMatches.push(wcdFinal);
-            rounds.push(roundMatches);
-
-            return { rounds };
-        }
-
-
-        // --- UI Rendering ---
-        function setupEventTabs() {
-            const tabsContainer = document.getElementById('event-tabs');
-            tabsContainer.innerHTML = ''; 
-            Object.keys(EVENT_CODES).forEach(eventId => {
-                const button = document.createElement('button');
-                button.dataset.event = eventId;
-                button.textContent = EVENT_CODES[eventId];
-                if (eventId === currentEventId) button.classList.add('active');
-                button.addEventListener('click', () => switchEventTab(eventId));
-                tabsContainer.appendChild(button);
-            });
-
-            const tournamentContentEl = document.getElementById('tournament-content');
-            tournamentContentEl.innerHTML = ''; 
-            Object.keys(EVENT_CODES).forEach(eventId => {
-                const eventDiv = document.createElement('div');
-                eventDiv.id = `event-${eventId}-container`;
-                eventDiv.classList.add('event-container');
-                if (eventId === currentEventId) eventDiv.classList.add('active');
-                
-                eventDiv.innerHTML = `
-                    <h2>${EVENT_CODES[eventId]}</h2>
-                    <div id="team-setup-area-${eventId}" class="team-setup-area">
-                        <h3>Team Names Entry</h3>
-                        <div id="team-names-input-${eventId}" class="team-input-grid"></div>
-                    </div>
-                    <div class="draw-section">
-                        <h3>Main Draw</h3>
-                        <div id="main-draw-${eventId}" class="draw"></div>
-                    </div>
-                    <div class="draw-section">
-                        <h3>Consolation Draw</h3>
-                        <div id="consolation-draw-${eventId}" class="draw"></div>
-                    </div>
-                    <div class="draw-section">
-                        <h3>Waterfall Consolations</h3>
-                        <div id="waterfall-consolation-draw-${eventId}" class="draw"></div>
-                    </div>
-                `;
-                tournamentContentEl.appendChild(eventDiv);
-            });
-        }
-
-        function switchEventTab(eventId) {
-            currentEventId = eventId;
-            document.querySelectorAll('#event-tabs button').forEach(btn => btn.classList.remove('active'));
-            const currentButton = document.querySelector(`#event-tabs button[data-event="${eventId}"]`);
-            if (currentButton) currentButton.classList.add('active');
-            
-            document.querySelectorAll('.event-container').forEach(container => container.classList.remove('active'));
-            const currentContainer = document.getElementById(`event-${eventId}-container`);
-            if (currentContainer) currentContainer.classList.add('active');
-            renderCurrentEvent();
-        }
-
-        function renderCurrentEvent() {
-            const eventData = tournamentData[currentEventId];
-            if (!eventData) {
-                console.warn(`No data found for event ${currentEventId}. Cannot render.`);
-                const eventContainer = document.getElementById(`event-${currentEventId}-container`);
-                if (eventContainer) {
-                    eventContainer.innerHTML = `<h2>${EVENT_CODES[currentEventId] || currentEventId}</h2><p>Data for this event could not be loaded or is missing.</p>`;
-                }
-                return;
-            }
-            
-            renderTeamSetupUI(currentEventId);
-            populateAllDrawsForEvent(currentEventId); 
-            renderDraw(eventData.mainDraw, `main-draw-${currentEventId}`, currentEventId, 'MD');
-            renderDraw(eventData.consolationDraw, `consolation-draw-${currentEventId}`, currentEventId, 'CD');
-            renderDraw(eventData.waterfallConsolationDraw, `waterfall-consolation-draw-${currentEventId}`, currentEventId, 'WCD'); // Added
-        }
-
-        function renderTeamSetupUI(eventId) {
-            const container = document.getElementById(`team-names-input-${eventId}`);
-            if (!container) return;
-            container.innerHTML = '';
-            const teams = tournamentData[eventId].teams;
-            teams.forEach((team, index) => { // Use index for display label 'Entry X'
-                const group = document.createElement('div');
-                group.classList.add('team-input-group');
-                const label = document.createElement('label');
-                label.setAttribute('for', `team-name-${eventId}-${team.id}`); // Use team.id for uniqueness if list reorders
-                // To get the display entry number, we can use the team's originalPlayerSlot if it's guaranteed sorted here.
-                // Or, if teams array is rendered in its current (possibly shuffled) order, use index.
-                // Let's assume `teams` is rendered in its current draw order.
-                label.textContent = `Entry ${index + 1}:`; 
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.id = `team-name-${eventId}-${team.id}`; // Use unique team.id
-                input.dataset.teamId = team.id; // Store the actual team id
-                input.value = team.name;
-                group.appendChild(label);
-                group.appendChild(input);
-                container.appendChild(group);
-            });
-        }
-        
-        function saveAllTeamNamesFromUI() {
-            let changesMade = false;
-            Object.keys(EVENT_CODES).forEach(eventId => {
-                const event = tournamentData[eventId];
-                if (!event || !event.teams) return;
-                event.teams.forEach(team => { // Iterate through teams, not just index
-                    const inputElement = document.getElementById(`team-name-${eventId}-${team.id}`); // Use team.id to find input
-                    if (inputElement && inputElement.value !== team.name) {
-                        team.name = inputElement.value;
-                        changesMade = true;
-                    }
-                });
-            });
-
-            if (changesMade) {
-                saveData();
-                renderCurrentEvent(); 
-                alert("All team names saved!");
-            } else {
-                alert("No changes to team names detected.");
-            }
-        }
-
-        function renderDraw(drawData, containerId, eventId, drawTypePrefix) {
-            const container = document.getElementById(containerId);
-            if (!container) return;
-            container.innerHTML = ''; 
-
-            if (!drawData || !drawData.rounds || drawData.rounds.length === 0) {
-                container.innerHTML = '<p style="padding:10px; color:#777;">Draw not generated yet or no matches.</p>';
-                return;
-            }
-
-            drawData.rounds.forEach((roundMatches, roundIndex) => {
-                const roundDiv = document.createElement('div');
-                roundDiv.classList.add('round');
-                roundDiv.dataset.roundIndex = roundIndex;
-
-                roundMatches.forEach(match => {
-                    const matchDiv = document.createElement('div');
-                    matchDiv.classList.add('match');
-                    matchDiv.id = `match-${eventId}-${match.id}`; 
-                    
-                    const team1Name = getTeamNameById(currentEventId, match.team1Id) || (match.team1Id === 'BYE' ? 'BYE' : 'TBD');
-                    const team2Name = getTeamNameById(currentEventId, match.team2Id) || (match.team2Id === 'BYE' ? 'BYE' : 'TBD');
-                    
-                    let scoreInputs1 = '', scoreInputs2 = '';
-                    
-                    const isBo3 = (drawTypePrefix === 'MD' && (match.isSF || match.isFinal || match.isOverallChampionship)) || 
-                                    (drawTypePrefix === 'CD' && match.isFinal && !match.isThirdPlacePlayoff);
-                    const numGamesToPlay = isBo3 ? 3 : 1;
-
-                    match.score1 = match.score1 || [];
-                    match.score2 = match.score2 || [];
-
-                    for (let g = 0; g < numGamesToPlay; g++) {
-                        scoreInputs1 += `<input type="number" class="score-input team1-game${g+1}" min="0" max="30" ${match.isComplete ? 'disabled' : ''} value="${match.score1[g] !== undefined && match.score1[g] !== null ? match.score1[g] : ''}" title="Game ${g+1} Score for ${team1Name}"> `;
-                        scoreInputs2 += `<input type="number" class="score-input team2-game${g+1}" min="0" max="30" ${match.isComplete ? 'disabled' : ''} value="${match.score2[g] !== undefined && match.score2[g] !== null ? match.score2[g] : ''}" title="Game ${g+1} Score for ${team2Name}"> `;
-                    }
-                    
-                    let matchLabel = match.customLabel || `${match.id}`;
-                    if (isBo3 && match.customLabel && !match.customLabel.toLowerCase().includes("best of 3")) matchLabel += " (Best of 3)";
-
-                    matchDiv.innerHTML = `
-                        <div class="match-meta">${matchLabel}</div>
-                        <div class="team ${match.winnerId === match.team1Id && match.isComplete ? 'winner' : (match.loserId === match.team1Id && match.isComplete ? 'loser' : '')}">
-                            <span class="team-name">${team1Name}</span>
-                            <span class="scores-container">${scoreInputs1}</span>
-                        </div>
-                        <div class="team ${match.winnerId === match.team2Id && match.isComplete ? 'winner' : (match.loserId === match.team2Id && match.isComplete ? 'loser' : '')}">
-                            <span class="team-name">${team2Name}</span>
-                            <span class="scores-container">${scoreInputs2}</span>
-                        </div>
-                        ${!match.isComplete && match.team1Id && match.team2Id && match.team1Id !== 'BYE' && match.team2Id !== 'BYE' ? 
-                            `<button class="save-score" onclick="handleScoreSave('${currentEventId}', '${drawTypePrefix}', '${match.id}')">Save Score</button>` : ''}
-                        ${match.isBye ? `<div class="bye">${getTeamNameById(currentEventId, match.winnerId)} advances (BYE)</div>` : ''}
-                        ${match.isComplete && !match.isBye ? `<div class="match-complete-indicator">Winner: ${getTeamNameById(currentEventId, match.winnerId)}</div>` : ''}
-                    `;
-                    roundDiv.appendChild(matchDiv);
-                });
-                container.appendChild(roundDiv);
-            });
-        }
-
-        function getTeamNameById(eventId, teamId) {
-            if (!teamId) return 'TBD'; 
-            if (teamId === 'BYE') return 'BYE';
-            const event = tournamentData[eventId];
-            if (!event || !event.teams) return teamId; 
-            const team = event.teams.find(t => t.id === teamId);
-            return team ? team.name : teamId; 
-        }
-        
-        function findMatchById(eventId, drawTypePrefix, matchId) {
-            const event = tournamentData[eventId];
-            if (!event) return null;
-            
-            let draw;
-            if (drawTypePrefix === 'MD') draw = event.mainDraw;
-            else if (drawTypePrefix === 'CD') draw = event.consolationDraw;
-            else if (drawTypePrefix === 'WCD') draw = event.waterfallConsolationDraw; 
-            else return null; 
-
-            if (!draw || !draw.rounds) return null;
-            for (const round of draw.rounds) {
-                const foundMatch = round.find(m => m.id === matchId);
-                if (foundMatch) return foundMatch;
-            }
-            return null;
-        }
-
-        // --- Scoring Rules ---
-        function checkGameWinner(s1, s2) {
-            if (s1 === null || s2 === null || s1 === undefined || s2 === undefined || String(s1).trim() === '' || String(s2).trim() === '') return null; 
-
-            const p1 = parseInt(s1);
-            const p2 = parseInt(s2);
-            
-            if (isNaN(p1) || isNaN(p2)) return null;
-
-            if (p1 === 30 && p1 > p2) return 1; 
-            if (p2 === 30 && p2 > p1) return 2; 
-            if (p1 < 30 && p2 < 30) { 
-                if (p1 >= 21 && p1 >= p2 + 2) return 1; 
-                if (p2 >= 21 && p2 >= p1 + 2) return 2; 
-            }
-            return null; 
-        }
-
-        // --- Score Handling and Advancement ---
-        function handleScoreSave(eventId, drawTypePrefix, matchId) {
-            const match = findMatchById(eventId, drawTypePrefix, matchId);
-            if (!match) { console.error("Match not found:", matchId); return; }
-
-            const isBo3 = (drawTypePrefix === 'MD' && (match.isSF || match.isFinal || match.isOverallChampionship)) || 
-                            (drawTypePrefix === 'CD' && match.isFinal && !match.isThirdPlacePlayoff);
-            const numGamesToPlay = isBo3 ? 3 : 1;
-            
-            const collectedScores1 = [], collectedScores2 = [];
-            const matchDiv = document.getElementById(`match-${eventId}-${match.id}`);
-            if (!matchDiv) { console.error("Match div not found:", `match-${eventId}-${match.id}`); return; }
-
-            for (let g = 0; g < numGamesToPlay; g++) {
-                const s1El = matchDiv.querySelector(`.team1-game${g+1}`);
-                const s2El = matchDiv.querySelector(`.team2-game${g+1}`);
-                if (!s1El || !s2El) { collectedScores1.push(null); collectedScores2.push(null); continue;}
-
-                const s1Val = s1El.value;
-                const s2Val = s2El.value;
-                
-                collectedScores1.push(s1Val === '' ? null : parseInt(s1Val));
-                collectedScores2.push(s2Val === '' ? null : parseInt(s2Val));
-            }
-            match.score1 = collectedScores1; 
-            match.score2 = collectedScores2;
-
-            let team1MatchGamesWon = 0;
-            let team2MatchGamesWon = 0;
-            let allRequiredGamesValidlyScored = true;
-
-            for (let g = 0; g < numGamesToPlay; g++) {
-                if (isBo3 && (team1MatchGamesWon >= 2 || team2MatchGamesWon >= 2)) break; 
-
-                const gameWinner = checkGameWinner(match.score1[g], match.score2[g]);
-                if (gameWinner === 1) team1MatchGamesWon++;
-                else if (gameWinner === 2) team2MatchGamesWon++;
-                else {
-                    if (match.score1[g] !== null || match.score2[g] !== null) { 
-                        allRequiredGamesValidlyScored = false;
-                    }
-                }
-            }
-            
-            let determinedWinnerId = null;
-            if (!isBo3) { // Single game
-                if (team1MatchGamesWon === 1) determinedWinnerId = match.team1Id;
-                else if (team2MatchGamesWon === 1) determinedWinnerId = match.team2Id;
-                else { allRequiredGamesValidlyScored = false; } 
-            } else { // Best of 3
-                if (team1MatchGamesWon >= 2) determinedWinnerId = match.team1Id;
-                else if (team2MatchGamesWon >= 2) determinedWinnerId = match.team2Id;
-                else { allRequiredGamesValidlyScored = false; } 
-            }
-            
-            if (!allRequiredGamesValidlyScored) {
-                alert(`Match scores for ${match.id} are incomplete or invalid. Check all scores.`);
-                match.winnerId = null; 
-                match.loserId = null;
-                match.isComplete = false;
-                saveData(); 
-                renderCurrentEvent(); 
-                return;
-            }
-            
-            match.winnerId = determinedWinnerId;
-            match.loserId = (match.winnerId === match.team1Id) ? match.team2Id : match.team1Id;
-            match.isComplete = true;
-
-            if (!match.isOverallChampionship && !match.isThirdPlacePlayoff) {
-                const loserTeamObj = tournamentData[eventId].teams.find(t => t.id === match.loserId);
-                if (loserTeamObj) { 
-                    if (drawTypePrefix === 'MD') {
-                        loserTeamObj.mainDrawLosses = (loserTeamObj.mainDrawLosses || 0) + 1;
-                    } else if (drawTypePrefix === 'CD') { 
-                        loserTeamObj.consolationLosses = (loserTeamObj.consolationLosses || 0) + 1;
-                    }
-                }
-            }
-            
-            saveData();
-            renderCurrentEvent(); 
-        }
-        
-        function populateAllDrawsForEvent(eventId) {
-            const event = tournamentData[eventId];
-            if (!event) return;
-            
-            let maxIterations = 10; 
-            let iteration = 0;
-            let changedInIteration;
-
-            do {
-                changedInIteration = false;
-                const snapshot = (draw) => draw && draw.rounds ? draw.rounds.map(r => r.map(m => `${m.id}:${m.team1Id}-${m.team2Id}:${m.isComplete}`)) : [];
-                const originalAssignments = JSON.stringify({
-                    md: snapshot(event.mainDraw),
-                    cd: snapshot(event.consolationDraw),
-                    wfcd: snapshot(event.waterfallConsolationDraw) 
-                });
-
-                populateSpecificDraw(eventId, event.mainDraw, 'MD');
-                populateSpecificDraw(eventId, event.consolationDraw, 'CD');
-                populateSpecificDraw(eventId, event.waterfallConsolationDraw, 'WCD'); 
-
-                const newAssignments = JSON.stringify({
-                    md: snapshot(event.mainDraw),
-                    cd: snapshot(event.consolationDraw),
-                    wfcd: snapshot(event.waterfallConsolationDraw) 
-                });
-                
-                if (originalAssignments !== newAssignments) {
-                    changedInIteration = true;
-                }
-                iteration++;
-            } while (changedInIteration && iteration < maxIterations);
-             if (iteration === maxIterations && changedInIteration) {
-                console.warn("Max population iterations reached. Draw might not be fully stable.");
-            }
-        }
-
-        function populateSpecificDraw(eventId, drawData, drawTypePrefix) {
-            if (!drawData || !drawData.rounds) return;
-
-            drawData.rounds.forEach(round => {
-                round.forEach(match => {
-                    if (match.isComplete && !match.isBye) return; 
-                                            
-                    if (!match.team1Id || match.team1Id === 'TBD') { 
-                        const p1Id = getPlayerIdFromSource(eventId, match.team1Source); 
-                        if (p1Id) match.team1Id = p1Id;
-                    }
-                    if (!match.team2Id || match.team2Id === 'TBD') {
-                        const p2Id = getPlayerIdFromSource(eventId, match.team2Source); 
-                        if (p2Id) match.team2Id = p2Id;
-                    }
-
-                    if (!match.isComplete) { 
-                        let newByeWinner = null;
-                        if (match.team1Id === 'BYE' && match.team2Id && match.team2Id !== 'BYE' && match.team2Id !== 'TBD') {
-                            newByeWinner = match.team2Id;
-                        } else if (match.team2Id === 'BYE' && match.team1Id && match.team1Id !== 'BYE' && match.team1Id !== 'TBD') {
-                            newByeWinner = match.team1Id;
-                        } else if (match.team1Id === 'BYE' && match.team2Id === 'BYE') {
-                            newByeWinner = 'BYE'; 
-                        }
-                        
-                        if (newByeWinner) {
-                             match.winnerId = newByeWinner;
-                             match.loserId = (newByeWinner === match.team1Id) ? match.team2Id : match.team1Id; 
-                             match.isComplete = true; match.isBye = true;
-                             match.score1 = []; match.score2 = []; 
-                        }
-                    }
-
-                    if (match.isComplete && match.loserId && match.loserFeedsToNextBracketMatchId && match.nextBracketType) {
-                        const loserIdToFeed = match.loserId; 
-                        const targetDrawTypePrefix = match.nextBracketType; 
-                        const targetMatchToFeed = findMatchById(eventId, targetDrawTypePrefix, match.loserFeedsToNextBracketMatchId);
-
-                        if (targetMatchToFeed && !targetMatchToFeed.isComplete) { 
-                            let slotFilledThisIteration = false;
-                            if (match.loserFeedsToNextBracketSlotNumber === 1 && (!targetMatchToFeed.team1Id || targetMatchToFeed.team1Id === 'TBD')) {
-                                targetMatchToFeed.team1Id = loserIdToFeed;
-                                slotFilledThisIteration = true;
-                            } else if (match.loserFeedsToNextBracketSlotNumber === 2 && (!targetMatchToFeed.team2Id || targetMatchToFeed.team2Id === 'TBD')) {
-                                targetMatchToFeed.team2Id = loserIdToFeed;
-                                slotFilledThisIteration = true;
-                            }
-
-                            if (slotFilledThisIteration && !targetMatchToFeed.isComplete) {
-                                let targetByeWinner = null;
-                                if (targetMatchToFeed.team1Id === 'BYE' && targetMatchToFeed.team2Id && targetMatchToFeed.team2Id !== 'BYE' && targetMatchToFeed.team2Id !== 'TBD') {
-                                    targetByeWinner = targetMatchToFeed.team2Id;
-                                } else if (targetMatchToFeed.team2Id === 'BYE' && targetMatchToFeed.team1Id && targetMatchToFeed.team1Id !== 'BYE' && targetMatchToFeed.team1Id !== 'TBD') {
-                                    targetByeWinner = targetMatchToFeed.team1Id;
-                                }
-                                if (targetByeWinner) {
-                                    targetMatchToFeed.winnerId = targetByeWinner;
-                                    targetMatchToFeed.loserId = (targetByeWinner === targetMatchToFeed.team1Id) ? targetMatchToFeed.team2Id : targetMatchToFeed.team1Id;
-                                    targetMatchToFeed.isComplete = true; targetMatchToFeed.isBye = true;
-                                    targetMatchToFeed.score1 = []; targetMatchToFeed.score2 = [];
-                                }
-                            }
-                        }
-                    }
-                });
-            });
-        }
-
-        function getPlayerIdFromSource(eventId, source) { 
-            if (!source) return null;
-            const event = tournamentData[eventId];
-            if (!event) return null;
-
-            if (source.type === 'seed') {
-                if (event.teams && event.teams[source.slot]) {
-                    return event.teams[source.slot].id;
-                }
-                return event.teams[source.slot] ? event.teams[source.slot].id : null;
-            } else if (source.type === 'winner') {
-                let sourceDrawType;
-                if (source.matchId.startsWith('M')) sourceDrawType = 'MD';
-                else if (source.matchId.startsWith('CD')) sourceDrawType = 'CD';
-                else if (source.matchId.startsWith('WCD')) sourceDrawType = 'WCD';
-                else return null;
-
-                const sourceMatch = findMatchById(eventId, sourceDrawType, source.matchId);
-                if (sourceMatch && sourceMatch.isComplete) {
-                    return sourceMatch.winnerId; 
-                }
-                return null; 
-            } else if (source.type === 'loser') {
-                let sourceDrawType;
-                if (source.matchId.startsWith('M')) sourceDrawType = 'MD';
-                else if (source.matchId.startsWith('CD')) sourceDrawType = 'CD';
-                else return null;
-                
-                const sourceMatch = findMatchById(eventId, sourceDrawType, source.matchId);
-                
-                if (sourceMatch && sourceMatch.isComplete) {
-                    if (sourceMatch.isBye) {
-                        if (sourceMatch.team1Id === 'BYE' && sourceMatch.winnerId === sourceMatch.team2Id) return 'BYE';
-                        if (sourceMatch.team2Id === 'BYE' && sourceMatch.winnerId === sourceMatch.team1Id) return 'BYE';
-                        if (sourceMatch.winnerId === 'BYE') return 'BYE';
-                    }
-                    return sourceMatch.loserId; 
-                }
-                return null; 
-            }
-            return null;
-        }
-
-        // --- Entry Point ---
-        document.addEventListener('DOMContentLoaded', initApp);
-    </script>
+        const meta = await findTournamentByShareCode(shareCode);
+        if (meta) { setTournamentId(meta.id); }
+        else { setError('Tournament not found.'); }
+      } catch (err) { setError('Error: ' + err.message); }
+      setLoading(false);
+    })();
+  }, [shareCode]);
+
+  if (loading) return <div className="loading-center"><span className="spinner"></span> Loading shared tournament...</div>;
+  if (error) return (
+    <div className="auth-wrapper">
+      <div className="card auth-card text-center">
+        <h1>🏸</h1>
+        <p className="text-dim">{error}</p>
+        <a href={window.location.pathname} className="btn btn-primary mt-4" style={{textDecoration:'none'}}>Go to App</a>
+      </div>
+    </div>
+  );
+  return <TournamentView tournamentId={tournamentId} user={null} readOnly={true} onBack={() => { window.location.href = window.location.pathname; }} />;
+}
+
+/* --- App Root --- */
+function App() {
+  const [user, setUser] = useState(undefined); // undefined = loading
+  const [view, setView] = useState('list'); // list | tournament
+  const [selectedTournament, setSelectedTournament] = useState(null);
+
+  // Check for share code in URL
+  const params = new URLSearchParams(window.location.search);
+  const shareCode = params.get('share');
+
+  useEffect(() => {
+    if (!IS_CONFIGURED) { setUser(null); return; }
+    const unsub = auth.onAuthStateChanged(u => {
+      // Don't update user state if we're in share mode (anonymous auth)
+      if (shareCode) return;
+      setUser(u);
+    });
+    return unsub;
+  }, []);
+
+  if (!IS_CONFIGURED) return <SetupGuide />;
+  if (shareCode) return <ReadOnlyLoader shareCode={shareCode} />;
+  if (user === undefined) return <div className="loading-center"><span className="spinner"></span> Initializing...</div>;
+  if (!user) return <AuthScreen />;
+
+  const handleSelectTournament = (id, readOnly) => {
+    setSelectedTournament({ id, readOnly });
+    setView('tournament');
+  };
+
+  const handleBack = () => {
+    setSelectedTournament(null);
+    setView('list');
+  };
+
+  if (view === 'tournament' && selectedTournament) {
+    return <TournamentView tournamentId={selectedTournament.id} user={user} readOnly={selectedTournament.readOnly} onBack={handleBack} />;
+  }
+
+  return <TournamentList user={user} onSelect={handleSelectTournament} onSignOut={() => auth.signOut()} />;
+}
+
+ReactDOM.render(<App />, document.getElementById('root'));
+</script>
 </body>
 </html>
