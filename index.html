@@ -812,9 +812,15 @@ async function findTournamentByShareCode(code) {
 }
 
 async function getUserTournaments(userId) {
-  const owned = await db.collection('tournaments').where('ownerId', '==', userId).orderBy('createdAt', 'desc').get();
+  const owned = await db.collection('tournaments').where('ownerId', '==', userId).get();
   const results = [];
   owned.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
+  // Sort client-side to avoid requiring a Firestore composite index
+  results.sort((a, b) => {
+    const ta = a.createdAt ? a.createdAt.seconds : 0;
+    const tb = b.createdAt ? b.createdAt.seconds : 0;
+    return tb - ta;
+  });
   return results;
 }
 
@@ -940,8 +946,13 @@ function TournamentList({ user, onSelect, onSignOut }) {
 
   const loadList = async () => {
     setLoading(true);
-    const list = await getUserTournaments(user.uid);
-    setTournaments(list);
+    try {
+      const list = await getUserTournaments(user.uid);
+      setTournaments(list);
+    } catch (err) {
+      console.error('Error loading tournaments:', err);
+      setTournaments([]);
+    }
     setLoading(false);
   };
 
@@ -966,7 +977,9 @@ function TournamentList({ user, onSelect, onSignOut }) {
 
   const handleDelete = async (id, name) => {
     if (!confirm(`Delete tournament "${name}"? This cannot be undone.`)) return;
-    await deleteTournament(id);
+    try {
+      await deleteTournament(id);
+    } catch (err) { alert('Error deleting: ' + err.message); }
     loadList();
   };
 
