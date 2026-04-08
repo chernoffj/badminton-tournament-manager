@@ -759,6 +759,14 @@ function getSchoolAndRank(teamId) {
   return m ? { schoolNum: parseInt(m[1]), teamRank: parseInt(m[2]) } : { schoolNum: -1, teamRank: -1 };
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Check whether a team name is still a default placeholder
+   (i.e. user never renamed it). These become BYEs on shuffle.
+   ═══════════════════════════════════════════════════════════ */
+function isPlaceholderName(name) {
+  return /^School \d+ - Team \d+$/.test(name);
+}
+
 function shuffleEventTeams(eventData) {
   const teams = [...eventData.teams];
   const t1s = [], t2s = [];
@@ -785,6 +793,15 @@ function shuffleEventTeams(eventData) {
     else { arr[topSlots.pop()] = t; }
   });
   eventData.teams = arr;
+
+  /* ── Convert any remaining placeholder team names to BYE ── */
+  eventData.teams = eventData.teams.map(t => {
+    if (isPlaceholderName(t.name)) {
+      return { ...t, id: 'BYE', name: 'BYE' };
+    }
+    return t;
+  });
+
   [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw].forEach(draw => {
     if (!draw || !draw.rounds) return;
     draw.rounds.forEach(round => round.forEach(m => {
@@ -1599,13 +1616,18 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
       draw && draw.rounds && draw.rounds.some(round => round.some(m => m.isComplete && !m.isBye))
     );
     if (hasPlayed) { alert('Cannot shuffle: matches have been played. Reset first.'); return; }
-    if (!confirm(`Shuffle entries for ${EVENT_CODES[activeEvent]}?`)) return;
+    if (!confirm(`Shuffle entries for ${EVENT_CODES[activeEvent]}? Any teams with default names (e.g. "School 1 - Team 1") will become BYEs.`)) return;
     shuffleEventTeams(ev);
     populateAllDraws(ev);
     const newEvents = { ...events, [activeEvent]: ev };
     setEvents(newEvents);
     await saveEvent(activeEvent, ev);
-    alert('Shuffled!');
+    const byeCount = ev.teams.filter(t => t.id === 'BYE').length;
+    if (byeCount > 0) {
+      alert(`Shuffled! ${byeCount} placeholder team(s) converted to BYEs.`);
+    } else {
+      alert('Shuffled!');
+    }
   };
 
   const handleResetEvent = async () => {
@@ -1783,10 +1805,12 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
             <h3>Team Entries — {EVENT_CODES[activeEvent]}</h3>
             <div className="team-grid">
               {ev.teams.map((team, idx) => (
-                <div key={team.id} className="team-row">
+                <div key={team.id + '_' + idx} className="team-row">
                   <label>{idx + 1}.</label>
-                  <input value={team.name} disabled={!canEdit}
-                    onChange={e => updateTeamName(activeEvent, team.id, e.target.value)} />
+                  <input value={team.name} disabled={!canEdit || team.id === 'BYE'}
+                    onChange={e => updateTeamName(activeEvent, team.id, e.target.value)}
+                    style={team.id === 'BYE' ? { color: 'var(--text-dim)', fontStyle: 'italic' } : {}}
+                  />
                 </div>
               ))}
             </div>
