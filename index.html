@@ -701,19 +701,32 @@ function findMatchAcrossDraws(eventData, matchId) {
   return null;
 }
 
-function getPlayerIdFromSource(eventData, source) {
+/* ═══════════════════════════════════════════════════════════
+   CHANGED: Added rejectByes parameter — when true, loser/
+   winner sources that resolve to BYE return null instead.
+   Used by WCD population to prevent BYEs from entering the
+   waterfall consolation draw.
+   ═══════════════════════════════════════════════════════════ */
+function getPlayerIdFromSource(eventData, source, rejectByes) {
   if (!source) return null;
   if (source.type === 'seed') return eventData.teams[source.slot] ? eventData.teams[source.slot].id : null;
   if (source.type === 'winner') {
     const sm = findMatchAcrossDraws(eventData, source.matchId);
-    return (sm && sm.isComplete) ? sm.winnerId : null;
+    if (sm && sm.isComplete) {
+      if (rejectByes && sm.winnerId === 'BYE') return null;
+      return sm.winnerId;
+    }
+    return null;
   }
   if (source.type === 'loser') {
     const sm = findMatchAcrossDraws(eventData, source.matchId);
     if (sm && sm.isComplete) {
       if (sm.isBye) {
-        if (sm.team1Id === 'BYE' || sm.team2Id === 'BYE' || sm.winnerId === 'BYE') return 'BYE';
+        if (sm.team1Id === 'BYE' || sm.team2Id === 'BYE' || sm.winnerId === 'BYE') {
+          return rejectByes ? null : 'BYE';
+        }
       }
+      if (rejectByes && sm.loserId === 'BYE') return null;
       return sm.loserId;
     }
     return null;
@@ -721,17 +734,45 @@ function getPlayerIdFromSource(eventData, source) {
   return null;
 }
 
-function populateDraw(eventData, draw) {
+/* ═══════════════════════════════════════════════════════════
+   NEW: Check whether a source match is complete and its
+   relevant output (winner or loser) is BYE. Used to
+   determine that a WCD slot is "permanently empty" so the
+   opposing team can receive a bye advance.
+   ═══════════════════════════════════════════════════════════ */
+function isSourceResolvedAsBye(eventData, source) {
+  if (!source) return false;
+  const sm = findMatchAcrossDraws(eventData, source.matchId);
+  if (!sm || !sm.isComplete) return false;
+  if (source.type === 'loser') {
+    return sm.loserId === 'BYE' || (sm.isBye && (sm.team1Id === 'BYE' || sm.team2Id === 'BYE'));
+  }
+  if (source.type === 'winner') {
+    return sm.winnerId === 'BYE';
+  }
+  return false;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHANGED: populateDraw now accepts an isWCD flag.
+   When isWCD is true:
+   1. BYE team IDs from sources are rejected (not placed)
+   2. If a source is "permanently empty" (source match
+      complete with BYE loser/winner), the opposing real
+      team gets a bye advance
+   3. BYE losers are NOT fed forward to WCD from CD
+   ═══════════════════════════════════════════════════════════ */
+function populateDraw(eventData, draw, isWCD) {
   if (!draw || !draw.rounds) return;
   draw.rounds.forEach(round => {
     round.forEach(match => {
       if (match.isComplete && !match.isBye) return;
       if (!match.team1Id || match.team1Id === 'TBD') {
-        const p = getPlayerIdFromSource(eventData, match.team1Source);
+        const p = getPlayerIdFromSource(eventData, match.team1Source, isWCD);
         if (p) match.team1Id = p;
       }
       if (!match.team2Id || match.team2Id === 'TBD') {
-        const p = getPlayerIdFromSource(eventData, match.team2Source);
+        const p = getPlayerIdFromSource(eventData, match.team2Source, isWCD);
         if (p) match.team2Id = p;
       }
       if (!match.isComplete) {
@@ -745,17 +786,63 @@ function populateDraw(eventData, draw) {
           match.isComplete = true; match.isBye = true;
           match.score1 = []; match.score2 = [];
         }
+
+        /* ── WCD-specific: handle "permanently empty" slots ──
+           When a source's feeder match is complete and produced
+           a BYE loser, the slot will never be filled. Give the
+           opposing real team a bye advance, or mark both-empty
+           matches so downstream WCD rounds don't stall.        */
+        if (isWCD && !match.isComplete) {
+          const t1Empty = !match.team1Id && match.team1Source && isSourceResolvedAsBye(eventData, match.team1Source);
+          const t2Empty = !match.team2Id && match.team2Source && isSourceResolvedAsBye(eventData, match.team2Source);
+
+          if (t1Empty && t2Empty) {
+            /* Both slots permanently empty — propagate BYE */
+            match.team1Id = 'BYE';
+            match.team2Id = 'BYE';
+            match.winnerId = 'BYE';
+            match.loserId = 'BYE';
+            match.isComplete = true;
+            match.isBye = true;
+            match.score1 = [];
+            match.score2 = [];
+          } else if (t1Empty && match.team2Id && match.team2Id !== 'BYE' && match.team2Id !== 'TBD') {
+            /* Slot 1 permanently empty — team 2 advances */
+            match.team1Id = 'BYE';
+            match.winnerId = match.team2Id;
+            match.loserId = 'BYE';
+            match.isComplete = true;
+            match.isBye = true;
+            match.score1 = [];
+            match.score2 = [];
+          } else if (t2Empty && match.team1Id && match.team1Id !== 'BYE' && match.team1Id !== 'TBD') {
+            /* Slot 2 permanently empty — team 1 advances */
+            match.team2Id = 'BYE';
+            match.winnerId = match.team1Id;
+            match.loserId = 'BYE';
+            match.isComplete = true;
+            match.isBye = true;
+            match.score1 = [];
+            match.score2 = [];
+          }
+        }
       }
       if (match.isComplete && match.loserId && match.loserFeedsToNextBracketMatchId && match.nextBracketType) {
-        const target = findMatch(eventData, match.nextBracketType, match.loserFeedsToNextBracketMatchId);
-        if (target && !target.isComplete) {
-          if (match.loserFeedsToNextBracketSlotNumber === 1 && (!target.team1Id || target.team1Id === 'TBD')) target.team1Id = match.loserId;
-          else if (match.loserFeedsToNextBracketSlotNumber === 2 && (!target.team2Id || target.team2Id === 'TBD')) target.team2Id = match.loserId;
-          if (!target.isComplete) {
-            let tw = null;
-            if (target.team1Id === 'BYE' && target.team2Id && target.team2Id !== 'BYE' && target.team2Id !== 'TBD') tw = target.team2Id;
-            else if (target.team2Id === 'BYE' && target.team1Id && target.team1Id !== 'BYE' && target.team1Id !== 'TBD') tw = target.team1Id;
-            if (tw) { target.winnerId = tw; target.loserId = (tw === target.team1Id) ? target.team2Id : target.team1Id; target.isComplete = true; target.isBye = true; target.score1 = []; target.score2 = []; }
+        /* ── Skip feeding BYE losers into the waterfall consolation ── */
+        if (match.nextBracketType === 'WCD' && match.loserId === 'BYE') {
+          /* Don't feed — WCD handles permanently-empty slots
+             via isSourceResolvedAsBye() above */
+        } else {
+          const target = findMatch(eventData, match.nextBracketType, match.loserFeedsToNextBracketMatchId);
+          if (target && !target.isComplete) {
+            if (match.loserFeedsToNextBracketSlotNumber === 1 && (!target.team1Id || target.team1Id === 'TBD')) target.team1Id = match.loserId;
+            else if (match.loserFeedsToNextBracketSlotNumber === 2 && (!target.team2Id || target.team2Id === 'TBD')) target.team2Id = match.loserId;
+            if (!target.isComplete) {
+              let tw = null;
+              if (target.team1Id === 'BYE' && target.team2Id && target.team2Id !== 'BYE' && target.team2Id !== 'TBD') tw = target.team2Id;
+              else if (target.team2Id === 'BYE' && target.team1Id && target.team1Id !== 'BYE' && target.team1Id !== 'TBD') tw = target.team1Id;
+              if (tw) { target.winnerId = tw; target.loserId = (tw === target.team1Id) ? target.team2Id : target.team1Id; target.isComplete = true; target.isBye = true; target.score1 = []; target.score2 = []; }
+            }
           }
         }
       }
@@ -763,12 +850,15 @@ function populateDraw(eventData, draw) {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════
+   CHANGED: Pass isWCD = true for waterfallConsolationDraw
+   ═══════════════════════════════════════════════════════════ */
 function populateAllDraws(eventData) {
   for (let i = 0; i < 10; i++) {
     const snap = JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]);
-    populateDraw(eventData, eventData.mainDraw);
-    populateDraw(eventData, eventData.consolationDraw);
-    populateDraw(eventData, eventData.waterfallConsolationDraw);
+    populateDraw(eventData, eventData.mainDraw, false);
+    populateDraw(eventData, eventData.consolationDraw, false);
+    populateDraw(eventData, eventData.waterfallConsolationDraw, true);
     if (JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]) === snap) break;
   }
 }
@@ -794,6 +884,13 @@ function isPlaceholderName(name) {
   return /^School \d+ - Team \d+$/.test(name);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   CHANGED: shuffleEventTeams
+   When there are >16 BYEs (allowByeVsBye), real teams are
+   now distributed across R2 groups so that no BYE-vs-BYE
+   matches occur in Round 2 unless there are fewer than 8
+   real players (in which case some BYE-vs-BYE is inevitable).
+   ═══════════════════════════════════════════════════════════ */
 function shuffleEventTeams(eventData) {
   const teams = [...eventData.teams];
 
@@ -863,39 +960,74 @@ function shuffleEventTeams(eventData) {
     }
   } else {
     /* ── >16 BYEs: fewer than 16 real teams.
-       Place each real team in its own R1 match (paired with a BYE)
-       so that Round 1 is entirely skipped (all matches auto-advance).
-       Real teams are spread evenly between the top and bottom halves. ── */
+       Distribute real teams across R2 GROUPS to avoid BYE-vs-BYE
+       in Round 2 whenever possible. Each R2 match is fed by two
+       adjacent R1 matches (a "group"). By placing at least one
+       real team in each group, the R2 match will have at least
+       one real team. BYE-vs-BYE in R2 only occurs when there
+       are fewer real teams than R2 groups (i.e. <4 per half
+       or <8 total).
+       ═══════════════════════════════════════════════════════ */
     const realCount = realTeams.length;
     const realTopCount = Math.ceil(realCount / 2);
     const realBotCount = realCount - realTopCount;
-
-    /* Pick which R1 matches in each half get a real team */
-    let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
-    let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
-    fyShuffle(topMI);
-    fyShuffle(botMI);
 
     /* Fill entire draw with BYEs first */
     for (let i = 0; i < TOTAL_TEAMS; i++) {
       arr[i] = mkBye();
     }
 
-    /* For selected matches, clear one slot for a real team */
-    for (let k = 0; k < realTopCount; k++) {
-      const mi = topMI[k];
-      const s1 = mi * 2, s2 = mi * 2 + 1;
-      const realSlot = Math.random() < 0.5 ? s1 : s2;
-      arr[realSlot] = null;
-      realSlotsTop.push(realSlot);
-    }
-    for (let k = 0; k < realBotCount; k++) {
-      const mi = botMI[k];
-      const s1 = HALF + mi * 2, s2 = HALF + mi * 2 + 1;
-      const realSlot = Math.random() < 0.5 ? s1 : s2;
-      arr[realSlot] = null;
-      realSlotsBot.push(realSlot);
-    }
+    /* Helper: distribute `count` real-team slots across R2 groups
+       within one half of the draw, starting at `halfOffset`.
+       Returns the slot indices where real teams should be placed. */
+    const distributeInHalf = (count, halfOffset) => {
+      const slots = [];
+      if (count === 0) return slots;
+
+      const R2_GROUPS = MATCHES_PER_HALF / 2; // 4 R2 groups per half
+
+      /* Build group objects. Each group has two R1 match indices. */
+      const groups = Array.from({ length: R2_GROUPS }, (_, g) => ({
+        idx: g,
+        /* R1 match indices within this half (0-based) */
+        r1: [g * 2, g * 2 + 1]
+      }));
+      fyShuffle(groups);
+
+      let placed = 0;
+
+      /* Pass 1: one team per group — prevents BYE-vs-BYE in R2 */
+      for (let gi = 0; gi < groups.length && placed < count; gi++) {
+        const g = groups[gi];
+        /* Pick one of the two R1 matches in this group */
+        const miIdx = Math.floor(Math.random() * g.r1.length);
+        const mi = g.r1.splice(miIdx, 1)[0];
+        const s1 = halfOffset + mi * 2;
+        const s2 = halfOffset + mi * 2 + 1;
+        const realSlot = Math.random() < 0.5 ? s1 : s2;
+        arr[realSlot] = null;
+        slots.push(realSlot);
+        placed++;
+      }
+
+      /* Pass 2: if more teams than groups, use remaining R1 matches */
+      for (let gi = 0; gi < groups.length && placed < count; gi++) {
+        const g = groups[gi];
+        if (g.r1.length === 0) continue;
+        const mi = g.r1.pop();
+        const s1 = halfOffset + mi * 2;
+        const s2 = halfOffset + mi * 2 + 1;
+        const realSlot = Math.random() < 0.5 ? s1 : s2;
+        arr[realSlot] = null;
+        slots.push(realSlot);
+        placed++;
+      }
+
+      return slots;
+    };
+
+    realSlotsTop.push(...distributeInHalf(realTopCount, 0));
+    realSlotsBot.push(...distributeInHalf(realBotCount, HALF));
   }
 
   fyShuffle(realSlotsTop);
