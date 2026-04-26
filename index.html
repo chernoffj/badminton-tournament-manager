@@ -149,9 +149,6 @@ input, button, select, textarea { font-family: inherit; }
 .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-center { display: flex; align-items: center; justify-content: center; padding: 60px; gap: 12px; color: var(--text-dim); }
-/* ═══════════════════════════════════════════════════════════
-   NEW: Match Number Badge
-   ═══════════════════════════════════════════════════════════ */
 .match-number-badge {
   display: inline-block;
   font-size: 0.65rem;
@@ -169,9 +166,6 @@ input, button, select, textarea { font-family: inherit; }
   justify-content: space-between;
   margin-bottom: 6px;
 }
-/* ═══════════════════════════════════════════════════════════
-   NEW: Player Search Bar & Results
-   ═══════════════════════════════════════════════════════════ */
 .player-search-bar {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -330,9 +324,6 @@ input, button, select, textarea { font-family: inherit; }
   0% { box-shadow: 0 0 0 4px rgba(74,108,247,0.3), var(--shadow); }
   100% { box-shadow: 0 0 0 2px var(--accent-dim), var(--shadow); }
 }
-/* ═══════════════════════════════════════════════════════════
-   NEW: Edit Score Button
-   ═══════════════════════════════════════════════════════════ */
 .match-edit-btn {
   width: 100%;
   margin-top: 6px;
@@ -543,13 +534,17 @@ function generateMainDraw() {
   return { rounds };
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Consolation Draw — CD R1 no longer feeds losers to WCD.
+   WCD is populated dynamically (see populateWaterfallDynamic).
+   ═══════════════════════════════════════════════════════════ */
 function generateConsolationDraw() {
   const rounds = [];
   let r = [];
   for (let i = 0; i < 8; i++) {
     r.push(makeMatch(`CD1.${i+1}`, 1, i+1,
       { type: 'loser', matchId: `M1.${i*2+1}` }, { type: 'loser', matchId: `M1.${i*2+2}` },
-      { customLabel: `CD R1.${i+1}`, loserFeed: `WCD1.${Math.floor(i/2)+1}`, loserSlot: (i%2===0)?1:2, nextBracketType: 'WCD' }));
+      { customLabel: `CD R1.${i+1}` }));
   }
   rounds.push(r);
   r = [];
@@ -570,7 +565,7 @@ function generateConsolationDraw() {
   for (let i = 0; i < 4; i++) {
     r.push(makeMatch(`CD4.${i+1}`, 4, i+1,
       { type: 'winner', matchId: `CD3.${i+1}` }, { type: 'loser', matchId: `M3.${i+1}` },
-      { customLabel: `CD R4.${i+1} (vs QFL)` }));
+      { customLabel: `CD R4.${i+1} (vs QF Losing Teams)` }));
   }
   rounds.push(r);
   r = [];
@@ -598,12 +593,17 @@ function generateConsolationDraw() {
   return { rounds };
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Waterfall Consolation Draw — WCD R1 sources are null;
+   entries are assigned dynamically by populateWaterfallDynamic
+   from any first-time consolation losing team.
+   ═══════════════════════════════════════════════════════════ */
 function generateWaterfallDraw() {
   const rounds = [];
   let r = [];
   for (let i = 0; i < 4; i++) {
     r.push(makeMatch(`WCD1.${i+1}`, 1, i+1,
-      { type: 'loser', matchId: `CD1.${i*2+1}` }, { type: 'loser', matchId: `CD1.${i*2+2}` },
+      null, null,
       { customLabel: `WCD R1.${i+1}` }));
   }
   rounds.push(r);
@@ -701,32 +701,19 @@ function findMatchAcrossDraws(eventData, matchId) {
   return null;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CHANGED: Added rejectByes parameter — when true, loser/
-   winner sources that resolve to BYE return null instead.
-   Used by WCD population to prevent BYEs from entering the
-   waterfall consolation draw.
-   ═══════════════════════════════════════════════════════════ */
-function getPlayerIdFromSource(eventData, source, rejectByes) {
+function getPlayerIdFromSource(eventData, source) {
   if (!source) return null;
   if (source.type === 'seed') return eventData.teams[source.slot] ? eventData.teams[source.slot].id : null;
   if (source.type === 'winner') {
     const sm = findMatchAcrossDraws(eventData, source.matchId);
-    if (sm && sm.isComplete) {
-      if (rejectByes && sm.winnerId === 'BYE') return null;
-      return sm.winnerId;
-    }
-    return null;
+    return (sm && sm.isComplete) ? sm.winnerId : null;
   }
   if (source.type === 'loser') {
     const sm = findMatchAcrossDraws(eventData, source.matchId);
     if (sm && sm.isComplete) {
       if (sm.isBye) {
-        if (sm.team1Id === 'BYE' || sm.team2Id === 'BYE' || sm.winnerId === 'BYE') {
-          return rejectByes ? null : 'BYE';
-        }
+        if (sm.team1Id === 'BYE' || sm.team2Id === 'BYE' || sm.winnerId === 'BYE') return 'BYE';
       }
-      if (rejectByes && sm.loserId === 'BYE') return null;
       return sm.loserId;
     }
     return null;
@@ -734,45 +721,17 @@ function getPlayerIdFromSource(eventData, source, rejectByes) {
   return null;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   NEW: Check whether a source match is complete and its
-   relevant output (winner or loser) is BYE. Used to
-   determine that a WCD slot is "permanently empty" so the
-   opposing team can receive a bye advance.
-   ═══════════════════════════════════════════════════════════ */
-function isSourceResolvedAsBye(eventData, source) {
-  if (!source) return false;
-  const sm = findMatchAcrossDraws(eventData, source.matchId);
-  if (!sm || !sm.isComplete) return false;
-  if (source.type === 'loser') {
-    return sm.loserId === 'BYE' || (sm.isBye && (sm.team1Id === 'BYE' || sm.team2Id === 'BYE'));
-  }
-  if (source.type === 'winner') {
-    return sm.winnerId === 'BYE';
-  }
-  return false;
-}
-
-/* ═══════════════════════════════════════════════════════════
-   CHANGED: populateDraw now accepts an isWCD flag.
-   When isWCD is true:
-   1. BYE team IDs from sources are rejected (not placed)
-   2. If a source is "permanently empty" (source match
-      complete with BYE loser/winner), the opposing real
-      team gets a bye advance
-   3. BYE losers are NOT fed forward to WCD from CD
-   ═══════════════════════════════════════════════════════════ */
-function populateDraw(eventData, draw, isWCD) {
+function populateDraw(eventData, draw) {
   if (!draw || !draw.rounds) return;
   draw.rounds.forEach(round => {
     round.forEach(match => {
       if (match.isComplete && !match.isBye) return;
       if (!match.team1Id || match.team1Id === 'TBD') {
-        const p = getPlayerIdFromSource(eventData, match.team1Source, isWCD);
+        const p = getPlayerIdFromSource(eventData, match.team1Source);
         if (p) match.team1Id = p;
       }
       if (!match.team2Id || match.team2Id === 'TBD') {
-        const p = getPlayerIdFromSource(eventData, match.team2Source, isWCD);
+        const p = getPlayerIdFromSource(eventData, match.team2Source);
         if (p) match.team2Id = p;
       }
       if (!match.isComplete) {
@@ -786,63 +745,17 @@ function populateDraw(eventData, draw, isWCD) {
           match.isComplete = true; match.isBye = true;
           match.score1 = []; match.score2 = [];
         }
-
-        /* ── WCD-specific: handle "permanently empty" slots ──
-           When a source's feeder match is complete and produced
-           a BYE loser, the slot will never be filled. Give the
-           opposing real team a bye advance, or mark both-empty
-           matches so downstream WCD rounds don't stall.        */
-        if (isWCD && !match.isComplete) {
-          const t1Empty = !match.team1Id && match.team1Source && isSourceResolvedAsBye(eventData, match.team1Source);
-          const t2Empty = !match.team2Id && match.team2Source && isSourceResolvedAsBye(eventData, match.team2Source);
-
-          if (t1Empty && t2Empty) {
-            /* Both slots permanently empty — propagate BYE */
-            match.team1Id = 'BYE';
-            match.team2Id = 'BYE';
-            match.winnerId = 'BYE';
-            match.loserId = 'BYE';
-            match.isComplete = true;
-            match.isBye = true;
-            match.score1 = [];
-            match.score2 = [];
-          } else if (t1Empty && match.team2Id && match.team2Id !== 'BYE' && match.team2Id !== 'TBD') {
-            /* Slot 1 permanently empty — team 2 advances */
-            match.team1Id = 'BYE';
-            match.winnerId = match.team2Id;
-            match.loserId = 'BYE';
-            match.isComplete = true;
-            match.isBye = true;
-            match.score1 = [];
-            match.score2 = [];
-          } else if (t2Empty && match.team1Id && match.team1Id !== 'BYE' && match.team1Id !== 'TBD') {
-            /* Slot 2 permanently empty — team 1 advances */
-            match.team2Id = 'BYE';
-            match.winnerId = match.team1Id;
-            match.loserId = 'BYE';
-            match.isComplete = true;
-            match.isBye = true;
-            match.score1 = [];
-            match.score2 = [];
-          }
-        }
       }
       if (match.isComplete && match.loserId && match.loserFeedsToNextBracketMatchId && match.nextBracketType) {
-        /* ── Skip feeding BYE losers into the waterfall consolation ── */
-        if (match.nextBracketType === 'WCD' && match.loserId === 'BYE') {
-          /* Don't feed — WCD handles permanently-empty slots
-             via isSourceResolvedAsBye() above */
-        } else {
-          const target = findMatch(eventData, match.nextBracketType, match.loserFeedsToNextBracketMatchId);
-          if (target && !target.isComplete) {
-            if (match.loserFeedsToNextBracketSlotNumber === 1 && (!target.team1Id || target.team1Id === 'TBD')) target.team1Id = match.loserId;
-            else if (match.loserFeedsToNextBracketSlotNumber === 2 && (!target.team2Id || target.team2Id === 'TBD')) target.team2Id = match.loserId;
-            if (!target.isComplete) {
-              let tw = null;
-              if (target.team1Id === 'BYE' && target.team2Id && target.team2Id !== 'BYE' && target.team2Id !== 'TBD') tw = target.team2Id;
-              else if (target.team2Id === 'BYE' && target.team1Id && target.team1Id !== 'BYE' && target.team1Id !== 'TBD') tw = target.team1Id;
-              if (tw) { target.winnerId = tw; target.loserId = (tw === target.team1Id) ? target.team2Id : target.team1Id; target.isComplete = true; target.isBye = true; target.score1 = []; target.score2 = []; }
-            }
+        const target = findMatch(eventData, match.nextBracketType, match.loserFeedsToNextBracketMatchId);
+        if (target && !target.isComplete) {
+          if (match.loserFeedsToNextBracketSlotNumber === 1 && (!target.team1Id || target.team1Id === 'TBD')) target.team1Id = match.loserId;
+          else if (match.loserFeedsToNextBracketSlotNumber === 2 && (!target.team2Id || target.team2Id === 'TBD')) target.team2Id = match.loserId;
+          if (!target.isComplete) {
+            let tw = null;
+            if (target.team1Id === 'BYE' && target.team2Id && target.team2Id !== 'BYE' && target.team2Id !== 'TBD') tw = target.team2Id;
+            else if (target.team2Id === 'BYE' && target.team1Id && target.team1Id !== 'BYE' && target.team1Id !== 'TBD') tw = target.team1Id;
+            if (tw) { target.winnerId = tw; target.loserId = (tw === target.team1Id) ? target.team2Id : target.team1Id; target.isComplete = true; target.isBye = true; target.score1 = []; target.score2 = []; }
           }
         }
       }
@@ -851,14 +764,246 @@ function populateDraw(eventData, draw, isWCD) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CHANGED: Pass isWCD = true for waterfallConsolationDraw
+   Redistribute CD Round 1 to avoid BYE vs BYE.
+   Called after initial population assigns teams to CD R1.
+   Swaps entries between matches so each match has at most
+   one BYE, unless there are fewer than 8 real teams
+   (making some BYE vs BYE unavoidable).
    ═══════════════════════════════════════════════════════════ */
+function redistributeConsolationR1(eventData) {
+  const cd = eventData.consolationDraw;
+  if (!cd || !cd.rounds || !cd.rounds[0]) return;
+  const cdR1 = cd.rounds[0];
+
+  // Don't redistribute if any non-BYE match has already been completed
+  if (cdR1.some(m => m.isComplete && !m.isBye)) return;
+
+  // Reset any auto-completed BYE matches so we can redistribute
+  cdR1.forEach(m => {
+    if (m.isBye) {
+      m.isComplete = false;
+      m.isBye = false;
+      m.winnerId = null;
+      m.loserId = null;
+    }
+  });
+
+  // Collect all teams currently assigned
+  const allTeams = [];
+  cdR1.forEach(m => {
+    allTeams.push(m.team1Id || null);
+    allTeams.push(m.team2Id || null);
+  });
+
+  // If not all teams assigned yet, skip
+  if (allTeams.some(t => !t)) return;
+
+  // Check if any match has BYE vs BYE — if not, no redistribution needed
+  let hasByeVsBye = false;
+  for (const m of cdR1) {
+    if (m.team1Id === 'BYE' && m.team2Id === 'BYE') { hasByeVsBye = true; break; }
+  }
+  if (!hasByeVsBye) return;
+
+  const realTeams = allTeams.filter(t => t !== 'BYE');
+  const byeCount = allTeams.filter(t => t === 'BYE').length;
+
+  // If no real teams, nothing to do
+  if (realTeams.length === 0) return;
+
+  const numMatches = cdR1.length; // 8
+
+  if (realTeams.length >= numMatches) {
+    // Enough real teams: each match gets at most one BYE
+    const newSlots = new Array(numMatches * 2).fill(null);
+    const matchIndices = Array.from({ length: numMatches }, (_, i) => i);
+    fyShuffle(matchIndices);
+    const byeMatchIndices = new Set(matchIndices.slice(0, byeCount));
+
+    const realPool = [...realTeams];
+    fyShuffle(realPool);
+
+    for (let mi = 0; mi < numMatches; mi++) {
+      const s1 = mi * 2, s2 = mi * 2 + 1;
+      if (byeMatchIndices.has(mi)) {
+        const byeSlot = Math.random() < 0.5 ? s1 : s2;
+        newSlots[byeSlot] = 'BYE';
+        newSlots[byeSlot === s1 ? s2 : s1] = realPool.pop();
+      } else {
+        newSlots[s1] = realPool.pop();
+        newSlots[s2] = realPool.pop();
+      }
+    }
+
+    for (let mi = 0; mi < numMatches; mi++) {
+      cdR1[mi].team1Id = newSlots[mi * 2];
+      cdR1[mi].team2Id = newSlots[mi * 2 + 1];
+    }
+  } else {
+    // Fewer real teams than matches — minimize BYE vs BYE
+    // Place each real team in its own match paired with a BYE
+    const newSlots = new Array(numMatches * 2).fill('BYE');
+    const realPool = [...realTeams];
+    fyShuffle(realPool);
+    const matchIndices = Array.from({ length: numMatches }, (_, i) => i);
+    fyShuffle(matchIndices);
+
+    for (let i = 0; i < realPool.length; i++) {
+      const mi = matchIndices[i];
+      const slot = Math.random() < 0.5 ? mi * 2 : mi * 2 + 1;
+      newSlots[slot] = realPool[i];
+    }
+
+    for (let mi = 0; mi < numMatches; mi++) {
+      cdR1[mi].team1Id = newSlots[mi * 2];
+      cdR1[mi].team2Id = newSlots[mi * 2 + 1];
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Dynamic Waterfall Consolation population.
+   Instead of hard-wired sources from CD R1 losing teams only,
+   this collects FIRST-TIME consolation losing teams from ANY
+   CD round and places real players into WCD R1 before BYEs.
+   ═══════════════════════════════════════════════════════════ */
+function populateWaterfallDynamic(eventData) {
+  const wcd = eventData.waterfallConsolationDraw;
+  if (!wcd || !wcd.rounds || !wcd.rounds[0]) return;
+  const wcdR1 = wcd.rounds[0];
+
+  // Don't touch WCD R1 if any non-BYE match has been completed
+  if (wcdR1.some(m => m.isComplete && !m.isBye)) return;
+
+  const totalSlots = wcdR1.length * 2; // 8
+
+  // Collect teams already in WCD (across later rounds too)
+  const inWCD = new Set();
+  wcd.rounds.forEach(round => round.forEach(m => {
+    if (m.team1Id && m.team1Id !== 'BYE') inWCD.add(m.team1Id);
+    if (m.team2Id && m.team2Id !== 'BYE') inWCD.add(m.team2Id);
+  }));
+
+  // Scan ALL consolation rounds for losing teams
+  const cd = eventData.consolationDraw;
+  if (!cd || !cd.rounds) return;
+
+  const realLosers = [];
+  const byeLoserCount = { n: 0 };
+
+  for (let ri = 0; ri < cd.rounds.length; ri++) {
+    for (const match of cd.rounds[ri]) {
+      if (!match.isComplete) continue;
+      const lid = match.loserId;
+      if (!lid || inWCD.has(lid)) continue;
+      if (lid === 'BYE') {
+        byeLoserCount.n++;
+      } else {
+        realLosers.push(lid);
+      }
+    }
+  }
+
+  // Check if there are still unresolved CD matches that could produce real losing teams
+  let potentialFutureRealLosers = 0;
+  for (const round of cd.rounds) {
+    for (const match of round) {
+      if (match.isComplete) continue;
+      const t1Real = match.team1Id && match.team1Id !== 'BYE' && match.team1Id !== 'TBD';
+      const t2Real = match.team2Id && match.team2Id !== 'BYE' && match.team2Id !== 'TBD';
+      if (t1Real || t2Real) potentialFutureRealLosers++;
+    }
+  }
+
+  // Build the entry list: real players first
+  const entries = [];
+  for (const t of realLosers) {
+    if (entries.length >= totalSlots) break;
+    entries.push(t);
+  }
+
+  // Only add BYEs if we've exhausted real possibilities
+  if (potentialFutureRealLosers === 0 || entries.length >= totalSlots) {
+    while (entries.length < totalSlots) {
+      entries.push('BYE');
+    }
+  }
+
+  if (entries.length < totalSlots) return; // Wait for more entries
+
+  // Reset BYE-only completed matches in WCD R1 so we can redistribute
+  wcdR1.forEach(m => {
+    if (m.isBye) {
+      m.isComplete = false;
+      m.isBye = false;
+      m.winnerId = null;
+      m.loserId = null;
+      m.team1Id = null;
+      m.team2Id = null;
+    }
+  });
+
+  // Distribute entries into WCD R1 matches, avoiding BYE vs BYE when possible
+  const realEntries = entries.filter(e => e !== 'BYE');
+  const byeEntryCount = entries.filter(e => e === 'BYE').length;
+  const numMatches = wcdR1.length;
+
+  if (realEntries.length >= numMatches) {
+    // Enough real teams for at least one per match
+    const newSlots = new Array(totalSlots).fill(null);
+    const matchIndices = Array.from({ length: numMatches }, (_, i) => i);
+    fyShuffle(matchIndices);
+    const byeMatchSet = new Set(matchIndices.slice(0, byeEntryCount));
+
+    const pool = [...realEntries];
+    for (let mi = 0; mi < numMatches; mi++) {
+      const s1 = mi * 2, s2 = mi * 2 + 1;
+      if (byeMatchSet.has(mi)) {
+        const bs = Math.random() < 0.5 ? s1 : s2;
+        newSlots[bs] = 'BYE';
+        newSlots[bs === s1 ? s2 : s1] = pool.pop();
+      } else {
+        newSlots[s1] = pool.pop();
+        newSlots[s2] = pool.pop();
+      }
+    }
+
+    for (let mi = 0; mi < numMatches; mi++) {
+      wcdR1[mi].team1Id = newSlots[mi * 2];
+      wcdR1[mi].team2Id = newSlots[mi * 2 + 1];
+    }
+  } else if (realEntries.length > 0) {
+    // Fewer real teams than matches — minimize BYE vs BYE
+    const newSlots = new Array(totalSlots).fill('BYE');
+    const pool = [...realEntries];
+    const matchIndices = Array.from({ length: numMatches }, (_, i) => i);
+    fyShuffle(matchIndices);
+    for (let i = 0; i < pool.length; i++) {
+      const mi = matchIndices[i];
+      const slot = Math.random() < 0.5 ? mi * 2 : mi * 2 + 1;
+      newSlots[slot] = pool[i];
+    }
+    for (let mi = 0; mi < numMatches; mi++) {
+      wcdR1[mi].team1Id = newSlots[mi * 2];
+      wcdR1[mi].team2Id = newSlots[mi * 2 + 1];
+    }
+  } else {
+    // All BYEs
+    for (let mi = 0; mi < numMatches; mi++) {
+      wcdR1[mi].team1Id = 'BYE';
+      wcdR1[mi].team2Id = 'BYE';
+    }
+  }
+}
+
 function populateAllDraws(eventData) {
   for (let i = 0; i < 10; i++) {
     const snap = JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]);
-    populateDraw(eventData, eventData.mainDraw, false);
-    populateDraw(eventData, eventData.consolationDraw, false);
-    populateDraw(eventData, eventData.waterfallConsolationDraw, true);
+    populateDraw(eventData, eventData.mainDraw);
+    populateDraw(eventData, eventData.consolationDraw);
+    redistributeConsolationR1(eventData);
+    populateWaterfallDynamic(eventData);
+    populateDraw(eventData, eventData.waterfallConsolationDraw);
     if (JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]) === snap) break;
   }
 }
@@ -884,17 +1029,9 @@ function isPlaceholderName(name) {
   return /^School \d+ - Team \d+$/.test(name);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CHANGED: shuffleEventTeams
-   When there are >16 BYEs (allowByeVsBye), real teams are
-   now distributed across R2 groups so that no BYE-vs-BYE
-   matches occur in Round 2 unless there are fewer than 8
-   real players (in which case some BYE-vs-BYE is inevitable).
-   ═══════════════════════════════════════════════════════════ */
 function shuffleEventTeams(eventData) {
   const teams = [...eventData.teams];
 
-  /* ── Separate real teams from BYEs / placeholders ── */
   const realTeams = [];
   let byeCount = 0;
   teams.forEach(t => {
@@ -905,23 +1042,19 @@ function shuffleEventTeams(eventData) {
     }
   });
 
-  const HALF = TOTAL_TEAMS / 2;            // 16 slots per half
-  const MATCHES_PER_HALF = HALF / 2;       // 8 matches per half
+  const HALF = TOTAL_TEAMS / 2;
+  const MATCHES_PER_HALF = HALF / 2;
 
-  /* ── Distribute BYEs evenly between halves ── */
   const byesTopHalf = Math.ceil(byeCount / 2);
   const byesBotHalf = byeCount - byesTopHalf;
 
-  /* When more than 16 BYEs, fewer than 16 real teams remain */
   const allowByeVsBye = byeCount > 16;
 
-  /* Safety: can't have more BYEs in one half than matches (unless >16 BYEs) */
   if (!allowByeVsBye && (byesTopHalf > MATCHES_PER_HALF || byesBotHalf > MATCHES_PER_HALF)) {
     alert('Too many BYEs to create a valid draw (a BYE cannot face a BYE).');
     return;
   }
 
-  /* ── Build team array: place BYEs first, collect real slots ── */
   const arr = new Array(TOTAL_TEAMS).fill(null);
   const mkBye = () => ({ id: 'BYE', name: 'BYE', originalPlayerSlot: -1, mainDrawLosses: 0, consolationLosses: 0 });
 
@@ -929,8 +1062,6 @@ function shuffleEventTeams(eventData) {
   const realSlotsBot = [];
 
   if (!allowByeVsBye) {
-    /* ── ≤16 BYEs: at most one BYE per match ──
-       Shuffling match indices ensures even spread within each half. */
     let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
     let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
     fyShuffle(topMI);
@@ -959,81 +1090,38 @@ function shuffleEventTeams(eventData) {
       }
     }
   } else {
-    /* ── >16 BYEs: fewer than 16 real teams.
-       Distribute real teams across R2 GROUPS to avoid BYE-vs-BYE
-       in Round 2 whenever possible. Each R2 match is fed by two
-       adjacent R1 matches (a "group"). By placing at least one
-       real team in each group, the R2 match will have at least
-       one real team. BYE-vs-BYE in R2 only occurs when there
-       are fewer real teams than R2 groups (i.e. <4 per half
-       or <8 total).
-       ═══════════════════════════════════════════════════════ */
     const realCount = realTeams.length;
     const realTopCount = Math.ceil(realCount / 2);
     const realBotCount = realCount - realTopCount;
 
-    /* Fill entire draw with BYEs first */
+    let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
+    let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
+    fyShuffle(topMI);
+    fyShuffle(botMI);
+
     for (let i = 0; i < TOTAL_TEAMS; i++) {
       arr[i] = mkBye();
     }
 
-    /* Helper: distribute `count` real-team slots across R2 groups
-       within one half of the draw, starting at `halfOffset`.
-       Returns the slot indices where real teams should be placed. */
-    const distributeInHalf = (count, halfOffset) => {
-      const slots = [];
-      if (count === 0) return slots;
-
-      const R2_GROUPS = MATCHES_PER_HALF / 2; // 4 R2 groups per half
-
-      /* Build group objects. Each group has two R1 match indices. */
-      const groups = Array.from({ length: R2_GROUPS }, (_, g) => ({
-        idx: g,
-        /* R1 match indices within this half (0-based) */
-        r1: [g * 2, g * 2 + 1]
-      }));
-      fyShuffle(groups);
-
-      let placed = 0;
-
-      /* Pass 1: one team per group — prevents BYE-vs-BYE in R2 */
-      for (let gi = 0; gi < groups.length && placed < count; gi++) {
-        const g = groups[gi];
-        /* Pick one of the two R1 matches in this group */
-        const miIdx = Math.floor(Math.random() * g.r1.length);
-        const mi = g.r1.splice(miIdx, 1)[0];
-        const s1 = halfOffset + mi * 2;
-        const s2 = halfOffset + mi * 2 + 1;
-        const realSlot = Math.random() < 0.5 ? s1 : s2;
-        arr[realSlot] = null;
-        slots.push(realSlot);
-        placed++;
-      }
-
-      /* Pass 2: if more teams than groups, use remaining R1 matches */
-      for (let gi = 0; gi < groups.length && placed < count; gi++) {
-        const g = groups[gi];
-        if (g.r1.length === 0) continue;
-        const mi = g.r1.pop();
-        const s1 = halfOffset + mi * 2;
-        const s2 = halfOffset + mi * 2 + 1;
-        const realSlot = Math.random() < 0.5 ? s1 : s2;
-        arr[realSlot] = null;
-        slots.push(realSlot);
-        placed++;
-      }
-
-      return slots;
-    };
-
-    realSlotsTop.push(...distributeInHalf(realTopCount, 0));
-    realSlotsBot.push(...distributeInHalf(realBotCount, HALF));
+    for (let k = 0; k < realTopCount; k++) {
+      const mi = topMI[k];
+      const s1 = mi * 2, s2 = mi * 2 + 1;
+      const realSlot = Math.random() < 0.5 ? s1 : s2;
+      arr[realSlot] = null;
+      realSlotsTop.push(realSlot);
+    }
+    for (let k = 0; k < realBotCount; k++) {
+      const mi = botMI[k];
+      const s1 = HALF + mi * 2, s2 = HALF + mi * 2 + 1;
+      const realSlot = Math.random() < 0.5 ? s1 : s2;
+      arr[realSlot] = null;
+      realSlotsBot.push(realSlot);
+    }
   }
 
   fyShuffle(realSlotsTop);
   fyShuffle(realSlotsBot);
 
-  /* ── Place real teams with school-separation logic ── */
   const t1s = [], t2s = [];
   realTeams.forEach(t => {
     const { teamRank } = getSchoolAndRank(t.id);
@@ -1069,7 +1157,6 @@ function shuffleEventTeams(eventData) {
 
   eventData.teams = arr;
 
-  /* ── Reset all draws so they re-populate cleanly ── */
   [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw].forEach(draw => {
     if (!draw || !draw.rounds) return;
     draw.rounds.forEach(round => round.forEach(m => {
@@ -1131,39 +1218,22 @@ function buildMatchNumberMap(eventData) {
   const map = {};
   let num = 1;
 
-  /* Each entry: { key: draw property name, roundIdx: 0-based } */
   const schedule = [
-    /* 1–16  MD Round 1 (16 matches) */
     { key: 'mainDraw', roundIdx: 0 },
-    /* 17–24 MD Round 2 (8) — MD R1 winners; losers rest */
     { key: 'mainDraw', roundIdx: 1 },
-    /* 25–32 CD Round 1 (8) — MD R1 losers play; MD R2 winners rest */
     { key: 'consolationDraw', roundIdx: 0 },
-    /* 33–36 MD Quarter-Finals (4) — MD R2 winners rested during CD R1 */
     { key: 'mainDraw', roundIdx: 2 },
-    /* 37–40 WCD Round 1 (4) — CD R1 losers; staggered from CD R1 */
     { key: 'waterfallConsolationDraw', roundIdx: 0 },
-    /* 41–48 CD Round 2 (8) — CD R1 winners + MD R2 losers, both rested */
     { key: 'consolationDraw', roundIdx: 1 },
-    /* 49–52 CD Round 3 Playdown (4) */
     { key: 'consolationDraw', roundIdx: 2 },
-    /* 53–54 MD Semi-Finals (2) — QF winners well-rested */
     { key: 'mainDraw', roundIdx: 3 },
-    /* 55–56 WCD Semi-Finals (2) — WCD R1 winners rested */
     { key: 'waterfallConsolationDraw', roundIdx: 1 },
-    /* 57–60 CD Round 4 vs QF Losers (4) */
     { key: 'consolationDraw', roundIdx: 3 },
-    /* 61–62 CD Round 5 Playdown (2) */
     { key: 'consolationDraw', roundIdx: 4 },
-    /* 63    WCD Final (1) — WCD SF winners rested */
     { key: 'waterfallConsolationDraw', roundIdx: 2 },
-    /* 64–65 CD Semi-Finals (2) — CD R5 winners + MD SF losers */
     { key: 'consolationDraw', roundIdx: 5 },
-    /* 66    MD Final (1) */
     { key: 'mainDraw', roundIdx: 4 },
-    /* 67    CD Final (1) */
     { key: 'consolationDraw', roundIdx: 6 },
-    /* 68    2nd Place Playoff (1) */
     { key: 'consolationDraw', roundIdx: 7 },
   ];
 
@@ -1178,15 +1248,10 @@ function buildMatchNumberMap(eventData) {
   return map;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Find all matches involving a player (by name search)
-   Returns array of { match, drawType, matchNumber, status }
-   ═══════════════════════════════════════════════════════════ */
 function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
   if (!searchTerm || searchTerm.trim().length < 2) return [];
   const term = searchTerm.toLowerCase().trim();
 
-  // Find matching team IDs
   const matchingTeamIds = new Set();
   eventData.teams.forEach(t => {
     if (t.name.toLowerCase().includes(term)) {
@@ -1219,7 +1284,7 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
         if (!t1Matches && !t2Matches) continue;
 
         const playerTeamId = t1Matches ? match.team1Id : match.team2Id;
-        let status = 'waiting'; // teams not yet determined
+        let status = 'waiting';
         if (match.isComplete) {
           if (match.isBye) {
             status = 'bye';
@@ -1229,7 +1294,7 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
             status = 'lost';
           }
         } else if (match.team1Id && match.team2Id && match.team1Id !== 'TBD' && match.team2Id !== 'TBD') {
-          status = 'upcoming'; // both teams known, not yet played
+          status = 'upcoming';
         }
 
         results.push({
@@ -1246,17 +1311,14 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
     }
   }
 
-  // Sort by match number
   results.sort((a, b) => a.matchNumber - b.matchNumber);
   return results;
 }
 
 /* ═══════════════════════════════════════════════════════════
    Cascade reset — collect all matches downstream of a given
-   match (via winner/loser source references) and reset them.
-   This powers the "Edit Score" feature. Existing tournament
-   data is not changed by the presence of this function — it
-   only runs when an editor explicitly clicks Edit.
+   match (via winning team/losing team source references) and
+   reset them. This powers the "Edit Score" feature.
    ═══════════════════════════════════════════════════════════ */
 function collectDependentMatchIds(eventData, matchId, collected) {
   if (!collected) collected = new Set();
@@ -1278,12 +1340,19 @@ function collectDependentMatchIds(eventData, matchId, collected) {
       }
     }
   }
+
+  /* Also check loserFeedsToNextBracketMatchId references */
+  const sourceMatch = findMatchAcrossDraws(eventData, matchId);
+  if (sourceMatch && sourceMatch.loserFeedsToNextBracketMatchId) {
+    collectDependentMatchIds(eventData, sourceMatch.loserFeedsToNextBracketMatchId, collected);
+  }
+
   return collected;
 }
 
 function countDownstreamPlayed(eventData, matchId) {
   const deps = collectDependentMatchIds(eventData, matchId);
-  deps.delete(matchId); // exclude the target itself
+  deps.delete(matchId);
   let count = 0;
   const allDraws = [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw];
   for (const draw of allDraws) {
@@ -1307,7 +1376,6 @@ function resetMatchAndCascade(eventData, targetMatchId) {
       for (const m of round) {
         if (!deps.has(m.id)) continue;
 
-        // Reset match state
         m.winnerId = null;
         m.loserId = null;
         m.isComplete = false;
@@ -1315,8 +1383,6 @@ function resetMatchAndCascade(eventData, targetMatchId) {
         m.score1 = [];
         m.score2 = [];
 
-        // For downstream matches (not the target), clear team IDs
-        // that were populated from a now-reset source match
         if (m.id !== targetMatchId) {
           if (m.team1Source && (m.team1Source.type === 'winner' || m.team1Source.type === 'loser') && deps.has(m.team1Source.matchId)) {
             m.team1Id = null;
@@ -1326,6 +1392,37 @@ function resetMatchAndCascade(eventData, targetMatchId) {
           }
         }
       }
+    }
+  }
+
+  /* Also reset WCD R1 entries since they are dynamically populated
+     and may depend on now-reset CD match results. */
+  const wcd = eventData.waterfallConsolationDraw;
+  if (wcd && wcd.rounds && wcd.rounds[0]) {
+    wcd.rounds[0].forEach(m => {
+      if (deps.has(m.id)) return; // already handled
+      // WCD R1 has no source refs — reset unconditionally so dynamic populator can redo
+      m.team1Id = null;
+      m.team2Id = null;
+      m.winnerId = null;
+      m.loserId = null;
+      m.isComplete = false;
+      m.isBye = false;
+      m.score1 = [];
+      m.score2 = [];
+    });
+    // Also reset WCD later rounds that depend on WCD R1
+    for (let ri = 1; ri < wcd.rounds.length; ri++) {
+      wcd.rounds[ri].forEach(m => {
+        m.team1Id = null;
+        m.team2Id = null;
+        m.winnerId = null;
+        m.loserId = null;
+        m.isComplete = false;
+        m.isBye = false;
+        m.score1 = [];
+        m.score2 = [];
+      });
     }
   }
 }
@@ -1609,7 +1706,6 @@ function TournamentList({ user, onSelect, onSignOut }) {
   );
 }
 
-/* --- Share / QR Modal (FIXED) --- */
 function ShareModal({ shareCode, onClose }) {
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [qrError, setQrError] = useState(false);
@@ -1708,9 +1804,6 @@ function AddEditorModal({ tournamentId, onClose }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Player Search Component
-   ═══════════════════════════════════════════════════════════ */
 function PlayerSearchBar({ eventData, matchNumberMap, onScrollToMatch }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
@@ -1719,7 +1812,6 @@ function PlayerSearchBar({ eventData, matchNumberMap, onScrollToMatch }) {
     return findPlayerMatches(eventData, query, matchNumberMap);
   }, [eventData, query, matchNumberMap]);
 
-  // Find the first upcoming/ready match (the "next match")
   const nextMatchId = useMemo(() => {
     const upcoming = results.find(r => r.status === 'upcoming');
     if (upcoming) return upcoming.match.id;
@@ -1831,7 +1923,6 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, match
 
   const isHighlighted = highlightedMatchId === match.id;
 
-  /* Count downstream played matches for warning */
   const downstreamCount = canEdit ? countDownstreamPlayed(eventData, match.id) : 0;
 
   return (
@@ -1871,7 +1962,7 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, match
         </>
       )}
       {match.isBye && <div className="match-bye-text">{getName(match.winnerId)} advances (BYE)</div>}
-      {match.isComplete && !match.isBye && <div className="match-winner-text">✓ {getName(match.winnerId)}</div>}
+      {match.isComplete && !match.isBye && <div className="match-winner-text">✓ Winning Team: {getName(match.winnerId)}</div>}
     </div>
   );
 }
@@ -1880,7 +1971,7 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, mat
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
     MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final'],
-    CD: ['CD Round 1', 'CD Round 2', 'CD Playdown 1', 'CD vs QF Losers', 'CD Playdown 2', 'CD Semi-Finals', 'CD Final', '2nd Place'],
+    CD: ['CD Round 1', 'CD Round 2', 'CD Playdown 1', 'CD vs QF Losing Teams', 'CD Playdown 2', 'CD Semi-Finals', 'CD Final', '2nd Place'],
     WCD: ['WCD Round 1', 'WCD Semi-Finals', 'WCD Final']
   };
   const labels = roundLabels[drawType] || [];
@@ -1993,12 +2084,6 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     await saveEvent(activeEvent, ev);
   };
 
-  /* ═══════════════════════════════════════════════════════
-     Edit Score handler — resets a completed match and all
-     downstream matches that depend on its result, then
-     saves the updated event. The match's team assignments
-     are preserved so the editor can re-enter scores.
-     ═══════════════════════════════════════════════════════ */
   const handleScoreEdit = async (matchId, drawType) => {
     if (!canEdit) return;
     const downstream = countDownstreamPlayed(events[activeEvent], matchId);
@@ -2146,17 +2231,14 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     });
   };
 
-  /* Scroll to a match card and highlight it */
   const handleScrollToMatch = useCallback((matchId) => {
     setHighlightedMatchId(matchId);
-    // Wait a tick for React to render, then scroll
     setTimeout(() => {
       const el = document.getElementById(`match-${matchId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
       }
     }, 50);
-    // Clear highlight after a few seconds
     setTimeout(() => setHighlightedMatchId(null), 4000);
   }, []);
 
@@ -2166,7 +2248,6 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
   const ev = events[activeEvent];
   if (ev) populateAllDraws(ev);
 
-  // Build match number map for current event
   const matchNumberMap = ev ? buildMatchNumberMap(ev) : {};
 
   return (
@@ -2210,7 +2291,6 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
         ))}
       </div>
 
-      {/* Player Search Bar */}
       {ev && (
         <PlayerSearchBar
           eventData={ev}
