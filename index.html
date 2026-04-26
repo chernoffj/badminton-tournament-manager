@@ -330,6 +330,33 @@ input, button, select, textarea { font-family: inherit; }
   0% { box-shadow: 0 0 0 4px rgba(74,108,247,0.3), var(--shadow); }
   100% { box-shadow: 0 0 0 2px var(--accent-dim), var(--shadow); }
 }
+/* ═══════════════════════════════════════════════════════════
+   NEW: Edit Score Button
+   ═══════════════════════════════════════════════════════════ */
+.match-edit-btn {
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px;
+  background: var(--orange-dim);
+  color: var(--orange);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.match-edit-btn:hover {
+  background: var(--orange);
+  color: #fff;
+}
+.match-cascade-warning {
+  font-size: 0.7rem;
+  color: var(--red);
+  text-align: center;
+  margin-top: 4px;
+  font-style: italic;
+}
 @media (max-width: 640px) {
   .top-bar { flex-direction: column; align-items: stretch; text-align: center; }
   .top-bar-actions { justify-content: center; }
@@ -855,31 +882,63 @@ function generateShareCode() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   NEW: Build sequential match number map for an event
-   Numbers all matches across MD → CD → WCD, round by round.
+   Build sequential match number map for an event.
+   Numbers are assigned in SCHEDULING ORDER — interleaving
+   MD, CD and WCD rounds so players get rest between matches.
    ═══════════════════════════════════════════════════════════ */
 function buildMatchNumberMap(eventData) {
   const map = {};
   let num = 1;
-  const drawOrder = [
-    { key: 'mainDraw', prefix: 'MD' },
-    { key: 'consolationDraw', prefix: 'CD' },
-    { key: 'waterfallConsolationDraw', prefix: 'WCD' }
+
+  /* Each entry: { key: draw property name, roundIdx: 0-based } */
+  const schedule = [
+    /* 1–16  MD Round 1 (16 matches) */
+    { key: 'mainDraw', roundIdx: 0 },
+    /* 17–24 MD Round 2 (8) — MD R1 winners; losers rest */
+    { key: 'mainDraw', roundIdx: 1 },
+    /* 25–32 CD Round 1 (8) — MD R1 losers play; MD R2 winners rest */
+    { key: 'consolationDraw', roundIdx: 0 },
+    /* 33–36 MD Quarter-Finals (4) — MD R2 winners rested during CD R1 */
+    { key: 'mainDraw', roundIdx: 2 },
+    /* 37–40 WCD Round 1 (4) — CD R1 losers; staggered from CD R1 */
+    { key: 'waterfallConsolationDraw', roundIdx: 0 },
+    /* 41–48 CD Round 2 (8) — CD R1 winners + MD R2 losers, both rested */
+    { key: 'consolationDraw', roundIdx: 1 },
+    /* 49–52 CD Round 3 Playdown (4) */
+    { key: 'consolationDraw', roundIdx: 2 },
+    /* 53–54 MD Semi-Finals (2) — QF winners well-rested */
+    { key: 'mainDraw', roundIdx: 3 },
+    /* 55–56 WCD Semi-Finals (2) — WCD R1 winners rested */
+    { key: 'waterfallConsolationDraw', roundIdx: 1 },
+    /* 57–60 CD Round 4 vs QF Losers (4) */
+    { key: 'consolationDraw', roundIdx: 3 },
+    /* 61–62 CD Round 5 Playdown (2) */
+    { key: 'consolationDraw', roundIdx: 4 },
+    /* 63    WCD Final (1) — WCD SF winners rested */
+    { key: 'waterfallConsolationDraw', roundIdx: 2 },
+    /* 64–65 CD Semi-Finals (2) — CD R5 winners + MD SF losers */
+    { key: 'consolationDraw', roundIdx: 5 },
+    /* 66    MD Final (1) */
+    { key: 'mainDraw', roundIdx: 4 },
+    /* 67    CD Final (1) */
+    { key: 'consolationDraw', roundIdx: 6 },
+    /* 68    2nd Place Playoff (1) */
+    { key: 'consolationDraw', roundIdx: 7 },
   ];
-  for (const { key } of drawOrder) {
+
+  for (const { key, roundIdx } of schedule) {
     const draw = eventData[key];
-    if (!draw || !draw.rounds) continue;
-    for (const round of draw.rounds) {
-      for (const match of round) {
-        map[match.id] = num++;
-      }
+    if (!draw || !draw.rounds || !draw.rounds[roundIdx]) continue;
+    for (const match of draw.rounds[roundIdx]) {
+      map[match.id] = num++;
     }
   }
+
   return map;
 }
 
 /* ═══════════════════════════════════════════════════════════
-   NEW: Find all matches involving a player (by name search)
+   Find all matches involving a player (by name search)
    Returns array of { match, drawType, matchNumber, status }
    ═══════════════════════════════════════════════════════════ */
 function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
@@ -949,6 +1008,85 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
   // Sort by match number
   results.sort((a, b) => a.matchNumber - b.matchNumber);
   return results;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Cascade reset — collect all matches downstream of a given
+   match (via winner/loser source references) and reset them.
+   This powers the "Edit Score" feature. Existing tournament
+   data is not changed by the presence of this function — it
+   only runs when an editor explicitly clicks Edit.
+   ═══════════════════════════════════════════════════════════ */
+function collectDependentMatchIds(eventData, matchId, collected) {
+  if (!collected) collected = new Set();
+  if (collected.has(matchId)) return collected;
+  collected.add(matchId);
+
+  const allDraws = [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw];
+  for (const draw of allDraws) {
+    if (!draw || !draw.rounds) continue;
+    for (const round of draw.rounds) {
+      for (const m of round) {
+        const src1 = m.team1Source;
+        const src2 = m.team2Source;
+        const ref1 = src1 && (src1.type === 'winner' || src1.type === 'loser') && src1.matchId === matchId;
+        const ref2 = src2 && (src2.type === 'winner' || src2.type === 'loser') && src2.matchId === matchId;
+        if (ref1 || ref2) {
+          collectDependentMatchIds(eventData, m.id, collected);
+        }
+      }
+    }
+  }
+  return collected;
+}
+
+function countDownstreamPlayed(eventData, matchId) {
+  const deps = collectDependentMatchIds(eventData, matchId);
+  deps.delete(matchId); // exclude the target itself
+  let count = 0;
+  const allDraws = [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw];
+  for (const draw of allDraws) {
+    if (!draw || !draw.rounds) continue;
+    for (const round of draw.rounds) {
+      for (const m of round) {
+        if (deps.has(m.id) && m.isComplete && !m.isBye) count++;
+      }
+    }
+  }
+  return count;
+}
+
+function resetMatchAndCascade(eventData, targetMatchId) {
+  const deps = collectDependentMatchIds(eventData, targetMatchId);
+
+  const allDraws = [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw];
+  for (const draw of allDraws) {
+    if (!draw || !draw.rounds) continue;
+    for (const round of draw.rounds) {
+      for (const m of round) {
+        if (!deps.has(m.id)) continue;
+
+        // Reset match state
+        m.winnerId = null;
+        m.loserId = null;
+        m.isComplete = false;
+        m.isBye = false;
+        m.score1 = [];
+        m.score2 = [];
+
+        // For downstream matches (not the target), clear team IDs
+        // that were populated from a now-reset source match
+        if (m.id !== targetMatchId) {
+          if (m.team1Source && (m.team1Source.type === 'winner' || m.team1Source.type === 'loser') && deps.has(m.team1Source.matchId)) {
+            m.team1Id = null;
+          }
+          if (m.team2Source && (m.team2Source.type === 'winner' || m.team2Source.type === 'loser') && deps.has(m.team2Source.matchId)) {
+            m.team2Id = null;
+          }
+        }
+      }
+    }
+  }
 }
 
 async function createTournament(name, userId) {
@@ -1330,7 +1468,7 @@ function AddEditorModal({ tournamentId, onClose }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   NEW: Player Search Component
+   Player Search Component
    ═══════════════════════════════════════════════════════════ */
 function PlayerSearchBar({ eventData, matchNumberMap, onScrollToMatch }) {
   const [query, setQuery] = useState('');
@@ -1418,7 +1556,7 @@ function PlayerSearchBar({ eventData, matchNumberMap, onScrollToMatch }) {
   );
 }
 
-function MatchCard({ match, eventData, drawType, readOnly, onSave, matchNumber, highlightedMatchId }) {
+function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, matchNumber, highlightedMatchId }) {
   const getName = (teamId) => {
     if (!teamId) return 'TBD';
     if (teamId === 'BYE') return 'BYE';
@@ -1443,6 +1581,7 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, matchNumber, 
   };
 
   const canSave = !readOnly && !match.isComplete && match.team1Id && match.team2Id && match.team1Id !== 'BYE' && match.team2Id !== 'BYE';
+  const canEdit = !readOnly && match.isComplete && !match.isBye && onEdit;
   let label = match.customLabel || match.id;
   if (bo3 && !label.toLowerCase().includes('best of 3')) label += ' (Bo3)';
 
@@ -1450,6 +1589,9 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, matchNumber, 
   const t2cls = match.isComplete ? (match.winnerId === match.team2Id ? 'winner' : 'loser') : '';
 
   const isHighlighted = highlightedMatchId === match.id;
+
+  /* Count downstream played matches for warning */
+  const downstreamCount = canEdit ? countDownstreamPlayed(eventData, match.id) : 0;
 
   return (
     <div
@@ -1479,13 +1621,21 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, matchNumber, 
         </div>
       </div>
       {canSave && <button className="match-save-btn" onClick={handleSave}>Save Score</button>}
+      {canEdit && (
+        <>
+          <button className="match-edit-btn" onClick={() => onEdit(match.id, drawType)}>✏️ Edit Score</button>
+          {downstreamCount > 0 && (
+            <div className="match-cascade-warning">⚠ Will also reset {downstreamCount} dependent match{downstreamCount !== 1 ? 'es' : ''}</div>
+          )}
+        </>
+      )}
       {match.isBye && <div className="match-bye-text">{getName(match.winnerId)} advances (BYE)</div>}
       {match.isComplete && !match.isBye && <div className="match-winner-text">✓ {getName(match.winnerId)}</div>}
     </div>
   );
 }
 
-function DrawView({ drawData, eventData, drawType, readOnly, onSave, matchNumberMap, highlightedMatchId }) {
+function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, matchNumberMap, highlightedMatchId }) {
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
     MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final'],
@@ -1507,6 +1657,7 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave, matchNumber
               drawType={drawType}
               readOnly={readOnly}
               onSave={onSave}
+              onEdit={onEdit}
               matchNumber={matchNumberMap ? matchNumberMap[m.id] : null}
               highlightedMatchId={highlightedMatchId}
             />
@@ -1595,6 +1746,29 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
         else if (drawType === 'CD') loser.consolationLosses = (loser.consolationLosses || 0) + 1;
       }
     }
+    populateAllDraws(ev);
+    const newEvents = { ...events, [activeEvent]: ev };
+    setEvents(newEvents);
+    await saveEvent(activeEvent, ev);
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     Edit Score handler — resets a completed match and all
+     downstream matches that depend on its result, then
+     saves the updated event. The match's team assignments
+     are preserved so the editor can re-enter scores.
+     ═══════════════════════════════════════════════════════ */
+  const handleScoreEdit = async (matchId, drawType) => {
+    if (!canEdit) return;
+    const downstream = countDownstreamPlayed(events[activeEvent], matchId);
+    let msg = `Reset the score for this match so you can re-enter it?`;
+    if (downstream > 0) {
+      msg = `This will also reset ${downstream} downstream match${downstream !== 1 ? 'es' : ''} whose results depend on this one. Continue?`;
+    }
+    if (!confirm(msg)) return;
+
+    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
+    resetMatchAndCascade(ev, matchId);
     populateAllDraws(ev);
     const newEvents = { ...events, [activeEvent]: ev };
     setEvents(newEvents);
@@ -1817,15 +1991,15 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           </div>
           <div className="card draw-section">
             <h3>Main Draw</h3>
-            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Consolation Draw</h3>
-            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Waterfall Consolations</h3>
-            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
         </>
       )}
