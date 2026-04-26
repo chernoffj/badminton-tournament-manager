@@ -801,7 +801,7 @@ function shuffleEventTeams(eventData) {
   const realTeams = [];
   let byeCount = 0;
   teams.forEach(t => {
-    if (t.id === 'BYE' || isPlaceholderName(t.name)) {
+    if (t.id === 'BYE' || isPlaceholderName(t.name) || !t.name || !t.name.trim()) {
       byeCount++;
     } else {
       realTeams.push({ ...t });
@@ -815,20 +815,14 @@ function shuffleEventTeams(eventData) {
   const byesTopHalf = Math.ceil(byeCount / 2);
   const byesBotHalf = byeCount - byesTopHalf;
 
-  /* Safety: can't have more BYEs in one half than matches */
-  if (byesTopHalf > MATCHES_PER_HALF || byesBotHalf > MATCHES_PER_HALF) {
+  /* When more than 16 BYEs, BYE-vs-BYE is unavoidable — allow it */
+  const allowByeVsBye = byeCount > 16;
+
+  /* Safety: can't have more BYEs in one half than matches (unless >16 BYEs) */
+  if (!allowByeVsBye && (byesTopHalf > MATCHES_PER_HALF || byesBotHalf > MATCHES_PER_HALF)) {
     alert('Too many BYEs to create a valid draw (a BYE cannot face a BYE).');
     return;
   }
-
-  /* ── Pick which match indices (0-7) inside each half get a BYE ──
-     Shuffling the indices ensures even spread within each half.  */
-  let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
-  let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
-  fyShuffle(topMI);
-  fyShuffle(botMI);
-  const topByeSet = new Set(topMI.slice(0, byesTopHalf));
-  const botByeSet = new Set(botMI.slice(0, byesBotHalf));
 
   /* ── Build team array: place BYEs first, collect real slots ── */
   const arr = new Array(TOTAL_TEAMS).fill(null);
@@ -837,24 +831,55 @@ function shuffleEventTeams(eventData) {
   const realSlotsTop = [];
   const realSlotsBot = [];
 
-  for (let mi = 0; mi < MATCHES_PER_HALF; mi++) {
-    const s1 = mi * 2, s2 = mi * 2 + 1;
-    if (topByeSet.has(mi)) {
-      const bs = Math.random() < 0.5 ? s1 : s2;
-      arr[bs] = mkBye();
-      realSlotsTop.push(bs === s1 ? s2 : s1);
-    } else {
-      realSlotsTop.push(s1, s2);
+  if (!allowByeVsBye) {
+    /* ── ≤16 BYEs: at most one BYE per match ──
+       Shuffling match indices ensures even spread within each half. */
+    let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
+    let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
+    fyShuffle(topMI);
+    fyShuffle(botMI);
+    const topByeSet = new Set(topMI.slice(0, byesTopHalf));
+    const botByeSet = new Set(botMI.slice(0, byesBotHalf));
+
+    for (let mi = 0; mi < MATCHES_PER_HALF; mi++) {
+      const s1 = mi * 2, s2 = mi * 2 + 1;
+      if (topByeSet.has(mi)) {
+        const bs = Math.random() < 0.5 ? s1 : s2;
+        arr[bs] = mkBye();
+        realSlotsTop.push(bs === s1 ? s2 : s1);
+      } else {
+        realSlotsTop.push(s1, s2);
+      }
     }
-  }
-  for (let mi = 0; mi < MATCHES_PER_HALF; mi++) {
-    const s1 = HALF + mi * 2, s2 = HALF + mi * 2 + 1;
-    if (botByeSet.has(mi)) {
-      const bs = Math.random() < 0.5 ? s1 : s2;
-      arr[bs] = mkBye();
-      realSlotsBot.push(bs === s1 ? s2 : s1);
-    } else {
-      realSlotsBot.push(s1, s2);
+    for (let mi = 0; mi < MATCHES_PER_HALF; mi++) {
+      const s1 = HALF + mi * 2, s2 = HALF + mi * 2 + 1;
+      if (botByeSet.has(mi)) {
+        const bs = Math.random() < 0.5 ? s1 : s2;
+        arr[bs] = mkBye();
+        realSlotsBot.push(bs === s1 ? s2 : s1);
+      } else {
+        realSlotsBot.push(s1, s2);
+      }
+    }
+  } else {
+    /* ── >16 BYEs: BYE-vs-BYE is allowed; randomly assign BYE slots
+       within each half while still balancing between halves. ── */
+    let topSlots = Array.from({ length: HALF }, (_, i) => i);
+    let botSlots = Array.from({ length: HALF }, (_, i) => HALF + i);
+    fyShuffle(topSlots);
+    fyShuffle(botSlots);
+
+    for (let i = 0; i < byesTopHalf; i++) {
+      arr[topSlots[i]] = mkBye();
+    }
+    for (let i = byesTopHalf; i < HALF; i++) {
+      realSlotsTop.push(topSlots[i]);
+    }
+    for (let i = 0; i < byesBotHalf; i++) {
+      arr[botSlots[i]] = mkBye();
+    }
+    for (let i = byesBotHalf; i < HALF; i++) {
+      realSlotsBot.push(botSlots[i]);
     }
   }
 
@@ -1859,7 +1884,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
       draw && draw.rounds && draw.rounds.some(round => round.some(m => m.isComplete && !m.isBye))
     );
     if (hasPlayed) { alert('Cannot shuffle: non-BYE matches have been played. Reset the event first.'); return; }
-    if (!confirm(`Shuffle entries for ${EVENT_CODES[activeEvent]}? Any teams with default names (e.g. "School 1 - Team 1") will become BYEs. BYEs will be evenly distributed across the draw.`)) return;
+    if (!confirm(`Shuffle entries for ${EVENT_CODES[activeEvent]}? Any teams with default or blank names will become BYEs. BYEs will be evenly distributed across the draw.`)) return;
     shuffleEventTeams(ev);
     populateAllDraws(ev);
     const newEvents = { ...events, [activeEvent]: ev };
@@ -1867,7 +1892,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     await saveEvent(activeEvent, ev);
     const byeCount = ev.teams.filter(t => t.id === 'BYE').length;
     if (byeCount > 0) {
-      alert(`Shuffled! ${byeCount} placeholder team(s) converted to BYEs (evenly distributed, no BYE vs BYE).`);
+      alert(`Shuffled! ${byeCount} placeholder/blank team(s) converted to BYEs.${byeCount > 16 ? ' BYE vs BYE matches are present due to high BYE count.' : ' Evenly distributed, no BYE vs BYE.'}`);
     } else {
       alert('Shuffled!');
     }
