@@ -132,7 +132,7 @@ input, button, select, textarea { font-family: inherit; }
 .match-save-btn:hover { background: var(--green); color: #fff; }
 .match-bye-text { text-align: center; font-size: 0.8rem; color: var(--text-dim); font-style: italic; padding: 4px 0; }
 .match-winner-text { text-align: center; font-size: 0.78rem; color: var(--green); font-weight: 600; margin-top: 4px; }
-.controls-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 16px; }
+.controls-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 16px; }
 .controls-bar .sep { width: 1px; background: var(--border); margin: 0 4px; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
 .modal-content { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; }
@@ -796,39 +796,108 @@ function isPlaceholderName(name) {
 
 function shuffleEventTeams(eventData) {
   const teams = [...eventData.teams];
+
+  /* ── Separate real teams from BYEs / placeholders ── */
+  const realTeams = [];
+  let byeCount = 0;
+  teams.forEach(t => {
+    if (t.id === 'BYE' || isPlaceholderName(t.name)) {
+      byeCount++;
+    } else {
+      realTeams.push({ ...t });
+    }
+  });
+
+  const HALF = TOTAL_TEAMS / 2;            // 16 slots per half
+  const MATCHES_PER_HALF = HALF / 2;       // 8 matches per half
+
+  /* ── Distribute BYEs evenly between halves ── */
+  const byesTopHalf = Math.ceil(byeCount / 2);
+  const byesBotHalf = byeCount - byesTopHalf;
+
+  /* Safety: can't have more BYEs in one half than matches */
+  if (byesTopHalf > MATCHES_PER_HALF || byesBotHalf > MATCHES_PER_HALF) {
+    alert('Too many BYEs to create a valid draw (a BYE cannot face a BYE).');
+    return;
+  }
+
+  /* ── Pick which match indices (0-7) inside each half get a BYE ──
+     Shuffling the indices ensures even spread within each half.  */
+  let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
+  let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
+  fyShuffle(topMI);
+  fyShuffle(botMI);
+  const topByeSet = new Set(topMI.slice(0, byesTopHalf));
+  const botByeSet = new Set(botMI.slice(0, byesBotHalf));
+
+  /* ── Build team array: place BYEs first, collect real slots ── */
+  const arr = new Array(TOTAL_TEAMS).fill(null);
+  const mkBye = () => ({ id: 'BYE', name: 'BYE', originalPlayerSlot: -1, mainDrawLosses: 0, consolationLosses: 0 });
+
+  const realSlotsTop = [];
+  const realSlotsBot = [];
+
+  for (let mi = 0; mi < MATCHES_PER_HALF; mi++) {
+    const s1 = mi * 2, s2 = mi * 2 + 1;
+    if (topByeSet.has(mi)) {
+      const bs = Math.random() < 0.5 ? s1 : s2;
+      arr[bs] = mkBye();
+      realSlotsTop.push(bs === s1 ? s2 : s1);
+    } else {
+      realSlotsTop.push(s1, s2);
+    }
+  }
+  for (let mi = 0; mi < MATCHES_PER_HALF; mi++) {
+    const s1 = HALF + mi * 2, s2 = HALF + mi * 2 + 1;
+    if (botByeSet.has(mi)) {
+      const bs = Math.random() < 0.5 ? s1 : s2;
+      arr[bs] = mkBye();
+      realSlotsBot.push(bs === s1 ? s2 : s1);
+    } else {
+      realSlotsBot.push(s1, s2);
+    }
+  }
+
+  fyShuffle(realSlotsTop);
+  fyShuffle(realSlotsBot);
+
+  /* ── Place real teams with school-separation logic ── */
   const t1s = [], t2s = [];
-  teams.forEach(t => { const { teamRank } = getSchoolAndRank(t.id); if (teamRank === 1) t1s.push(t); else t2s.push(t); });
-  fyShuffle(t1s); fyShuffle(t2s);
-  const arr = new Array(TOTAL_TEAMS);
-  const HALF = TOTAL_TEAMS / 2;
-  const PER_HALF = NUM_SCHOOLS / 2;
-  let topSlots = Array.from({ length: HALF }, (_, i) => i);
-  let botSlots = Array.from({ length: HALF }, (_, i) => i + HALF);
-  fyShuffle(topSlots); fyShuffle(botSlots);
+  realTeams.forEach(t => {
+    const { teamRank } = getSchoolAndRank(t.id);
+    if (teamRank === 1) t1s.push(t); else t2s.push(t);
+  });
+  fyShuffle(t1s);
+  fyShuffle(t2s);
+
   const loc = {};
-  for (let i = 0; i < PER_HALF; i++) {
-    arr[topSlots.pop()] = t1s[i];
+  const PER_HALF = Math.min(Math.ceil(t1s.length / 2), realSlotsTop.length);
+
+  for (let i = 0; i < PER_HALF && realSlotsTop.length > 0; i++) {
+    arr[realSlotsTop.pop()] = t1s[i];
     loc[getSchoolAndRank(t1s[i].id).schoolNum] = 'top';
   }
-  for (let i = 0; i < PER_HALF; i++) {
-    arr[botSlots.pop()] = t1s[PER_HALF + i];
-    loc[getSchoolAndRank(t1s[PER_HALF + i].id).schoolNum] = 'bottom';
+  for (let i = PER_HALF; i < t1s.length && realSlotsBot.length > 0; i++) {
+    arr[realSlotsBot.pop()] = t1s[i];
+    loc[getSchoolAndRank(t1s[i].id).schoolNum] = 'bottom';
   }
+
   t2s.forEach(t => {
     const sn = getSchoolAndRank(t.id).schoolNum;
-    if (loc[sn] === 'top') { arr[botSlots.pop()] = t; }
-    else { arr[topSlots.pop()] = t; }
+    if (loc[sn] === 'top' && realSlotsBot.length > 0) {
+      arr[realSlotsBot.pop()] = t;
+    } else if (loc[sn] === 'bottom' && realSlotsTop.length > 0) {
+      arr[realSlotsTop.pop()] = t;
+    } else if (realSlotsTop.length > 0) {
+      arr[realSlotsTop.pop()] = t;
+    } else if (realSlotsBot.length > 0) {
+      arr[realSlotsBot.pop()] = t;
+    }
   });
+
   eventData.teams = arr;
 
-  /* ── Convert any remaining placeholder team names to BYE ── */
-  eventData.teams = eventData.teams.map(t => {
-    if (isPlaceholderName(t.name)) {
-      return { ...t, id: 'BYE', name: 'BYE' };
-    }
-    return t;
-  });
-
+  /* ── Reset all draws so they re-populate cleanly ── */
   [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw].forEach(draw => {
     if (!draw || !draw.rounds) return;
     draw.rounds.forEach(round => round.forEach(m => {
@@ -1789,8 +1858,8 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     const hasPlayed = [ev.mainDraw, ev.consolationDraw, ev.waterfallConsolationDraw].some(draw =>
       draw && draw.rounds && draw.rounds.some(round => round.some(m => m.isComplete && !m.isBye))
     );
-    if (hasPlayed) { alert('Cannot shuffle: matches have been played. Reset first.'); return; }
-    if (!confirm(`Shuffle entries for ${EVENT_CODES[activeEvent]}? Any teams with default names (e.g. "School 1 - Team 1") will become BYEs.`)) return;
+    if (hasPlayed) { alert('Cannot shuffle: non-BYE matches have been played. Reset the event first.'); return; }
+    if (!confirm(`Shuffle entries for ${EVENT_CODES[activeEvent]}? Any teams with default names (e.g. "School 1 - Team 1") will become BYEs. BYEs will be evenly distributed across the draw.`)) return;
     shuffleEventTeams(ev);
     populateAllDraws(ev);
     const newEvents = { ...events, [activeEvent]: ev };
@@ -1798,7 +1867,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     await saveEvent(activeEvent, ev);
     const byeCount = ev.teams.filter(t => t.id === 'BYE').length;
     if (byeCount > 0) {
-      alert(`Shuffled! ${byeCount} placeholder team(s) converted to BYEs.`);
+      alert(`Shuffled! ${byeCount} placeholder team(s) converted to BYEs (evenly distributed, no BYE vs BYE).`);
     } else {
       alert('Shuffled!');
     }
@@ -1806,7 +1875,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
 
   const handleResetEvent = async () => {
     if (!canEdit) return;
-    if (!confirm(`Reset ALL data for ${EVENT_CODES[activeEvent]}? This cannot be undone.`)) return;
+    if (!confirm(`Are you sure? This will reset ALL tournament data for ${EVENT_CODES[activeEvent]} including all scores, draws, and team assignments. This cannot be undone.`)) return;
     const fresh = createEventObject(activeEvent);
     const newEvents = { ...events, [activeEvent]: fresh };
     setEvents(newEvents);
@@ -1947,13 +2016,15 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
         <div className="controls-bar">
           <button className="btn btn-green btn-sm" onClick={handleSaveTeams}>💾 Save Teams</button>
           <button className="btn btn-orange btn-sm" onClick={handleShuffle}>🔀 Shuffle Event</button>
-          <button className="btn btn-danger btn-sm" onClick={handleResetEvent}>🗑 Reset Event</button>
           <span className="sep"></span>
           <button className="btn btn-sm" onClick={handleExportJSON}>⬇ Export JSON</button>
           <button className="btn btn-sm" onClick={handleImportJSON}>⬆ Import JSON</button>
           <span className="sep"></span>
           <button className="btn btn-sm" onClick={handleExportCSV}>⬇ Teams CSV</button>
           <button className="btn btn-sm" onClick={handleImportCSV}>⬆ Teams CSV</button>
+          <div style={{ flex: 1 }}></div>
+          <span className="text-sm" style={{ color: 'var(--red)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>⚠ Caution</span>
+          <button className="btn btn-danger btn-sm" onClick={handleResetEvent}>🗑 Reset Event</button>
         </div>
       )}
       <div className="event-tabs">
