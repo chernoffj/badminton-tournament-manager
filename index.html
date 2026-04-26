@@ -815,7 +815,7 @@ function shuffleEventTeams(eventData) {
   const byesTopHalf = Math.ceil(byeCount / 2);
   const byesBotHalf = byeCount - byesTopHalf;
 
-  /* When more than 16 BYEs, BYE-vs-BYE is unavoidable — allow it */
+  /* When more than 16 BYEs, fewer than 16 real teams remain */
   const allowByeVsBye = byeCount > 16;
 
   /* Safety: can't have more BYEs in one half than matches (unless >16 BYEs) */
@@ -862,24 +862,39 @@ function shuffleEventTeams(eventData) {
       }
     }
   } else {
-    /* ── >16 BYEs: BYE-vs-BYE is allowed; randomly assign BYE slots
-       within each half while still balancing between halves. ── */
-    let topSlots = Array.from({ length: HALF }, (_, i) => i);
-    let botSlots = Array.from({ length: HALF }, (_, i) => HALF + i);
-    fyShuffle(topSlots);
-    fyShuffle(botSlots);
+    /* ── >16 BYEs: fewer than 16 real teams.
+       Place each real team in its own R1 match (paired with a BYE)
+       so that Round 1 is entirely skipped (all matches auto-advance).
+       Real teams are spread evenly between the top and bottom halves. ── */
+    const realCount = realTeams.length;
+    const realTopCount = Math.ceil(realCount / 2);
+    const realBotCount = realCount - realTopCount;
 
-    for (let i = 0; i < byesTopHalf; i++) {
-      arr[topSlots[i]] = mkBye();
+    /* Pick which R1 matches in each half get a real team */
+    let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
+    let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
+    fyShuffle(topMI);
+    fyShuffle(botMI);
+
+    /* Fill entire draw with BYEs first */
+    for (let i = 0; i < TOTAL_TEAMS; i++) {
+      arr[i] = mkBye();
     }
-    for (let i = byesTopHalf; i < HALF; i++) {
-      realSlotsTop.push(topSlots[i]);
+
+    /* For selected matches, clear one slot for a real team */
+    for (let k = 0; k < realTopCount; k++) {
+      const mi = topMI[k];
+      const s1 = mi * 2, s2 = mi * 2 + 1;
+      const realSlot = Math.random() < 0.5 ? s1 : s2;
+      arr[realSlot] = null;
+      realSlotsTop.push(realSlot);
     }
-    for (let i = 0; i < byesBotHalf; i++) {
-      arr[botSlots[i]] = mkBye();
-    }
-    for (let i = byesBotHalf; i < HALF; i++) {
-      realSlotsBot.push(botSlots[i]);
+    for (let k = 0; k < realBotCount; k++) {
+      const mi = botMI[k];
+      const s1 = HALF + mi * 2, s2 = HALF + mi * 2 + 1;
+      const realSlot = Math.random() < 0.5 ? s1 : s2;
+      arr[realSlot] = null;
+      realSlotsBot.push(realSlot);
     }
   }
 
@@ -1891,8 +1906,11 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     setEvents(newEvents);
     await saveEvent(activeEvent, ev);
     const byeCount = ev.teams.filter(t => t.id === 'BYE').length;
-    if (byeCount > 0) {
-      alert(`Shuffled! ${byeCount} placeholder/blank team(s) converted to BYEs.${byeCount > 16 ? ' BYE vs BYE matches are present due to high BYE count.' : ' Evenly distributed, no BYE vs BYE.'}`);
+    const realCount = TOTAL_TEAMS - byeCount;
+    if (byeCount > 16) {
+      alert(`Shuffled! ${byeCount} BYEs created (${realCount} real team${realCount !== 1 ? 's' : ''}). Round 1 will be entirely skipped — all teams auto-advance to Round 2.`);
+    } else if (byeCount > 0) {
+      alert(`Shuffled! ${byeCount} placeholder/blank team(s) converted to BYEs. Evenly distributed, no BYE vs BYE.`);
     } else {
       alert('Shuffled!');
     }
