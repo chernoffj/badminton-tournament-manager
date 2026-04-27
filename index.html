@@ -121,11 +121,11 @@ input, button, select, textarea { font-family: inherit; }
 .match-label { font-size: 0.68rem; color: var(--text-dim); font-family: var(--font-mono); margin-bottom: 6px; text-align: right; }
 .match-team { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--border); }
 .match-team:last-of-type { border-bottom: none; }
-.match-team-name { flex: 1; font-size: 0.85rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.match-team-name { flex: 1; font-size: 0.85rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .match-team.winner .match-team-name { color: var(--green); font-weight: 700; }
 .match-team.loser .match-team-name { color: var(--text-dim); text-decoration: line-through; }
-.match-scores { display: flex; gap: 3px; }
-.score-box { width: 36px; padding: 3px; text-align: center; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text-bright); font-size: 0.82rem; font-family: var(--font-mono); }
+.match-scores { display: flex; gap: 3px; flex-shrink: 0; }
+.score-box { width: 48px; padding: 3px; text-align: center; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text-bright); font-size: 0.82rem; font-family: var(--font-mono); }
 .score-box:focus { border-color: var(--accent); outline: none; }
 .score-box:disabled { opacity: 0.5; }
 .match-save-btn { width: 100%; margin-top: 8px; padding: 6px; background: var(--green-dim); color: var(--green); border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.15s; }
@@ -348,6 +348,84 @@ input, button, select, textarea { font-family: inherit; }
   margin-top: 4px;
   font-style: italic;
 }
+/* ═══════ Custom Display Name styles ═══════ */
+.custom-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+.custom-name-tag {
+  font-size: 0.72rem;
+  color: var(--teal);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.custom-name-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  padding: 1px 4px;
+  border-radius: 4px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.custom-name-edit-btn:hover {
+  background: var(--bg-input);
+  color: var(--accent);
+}
+.custom-name-inline-edit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+}
+.custom-name-inline-edit input {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 0.75rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-bright);
+  min-width: 0;
+}
+.custom-name-inline-edit input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.custom-name-inline-edit button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.custom-name-inline-edit .cn-save {
+  color: var(--green);
+}
+.custom-name-inline-edit .cn-save:hover {
+  background: var(--green-dim);
+}
+.custom-name-inline-edit .cn-cancel {
+  color: var(--text-dim);
+}
+.custom-name-inline-edit .cn-cancel:hover {
+  background: var(--bg-input);
+}
+.match-team-name-block {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
 @media (max-width: 640px) {
   .top-bar { flex-direction: column; align-items: stretch; text-align: center; }
   .top-bar-actions { justify-content: center; }
@@ -469,6 +547,7 @@ function createInitialTeams(eventId) {
       teams.push({
         id: `${eventId}_s${i+1}_t${j+1}`,
         name: `School ${i+1} - Team ${j+1}`,
+        customDisplayName: '',
         originalPlayerSlot: teams.length,
         mainDrawLosses: 0,
         consolationLosses: 0
@@ -534,10 +613,6 @@ function generateMainDraw() {
   return { rounds };
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Consolation Draw — CD R1 no longer feeds losers to WCD.
-   WCD is populated dynamically (see populateWaterfallDynamic).
-   ═══════════════════════════════════════════════════════════ */
 function generateConsolationDraw() {
   const rounds = [];
   let r = [];
@@ -593,11 +668,6 @@ function generateConsolationDraw() {
   return { rounds };
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Waterfall Consolation Draw — WCD R1 sources are null;
-   entries are assigned dynamically by populateWaterfallDynamic
-   from any first-time consolation losing team.
-   ═══════════════════════════════════════════════════════════ */
 function generateWaterfallDraw() {
   const rounds = [];
   let r = [];
@@ -763,22 +833,11 @@ function populateDraw(eventData, draw) {
   });
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Redistribute CD Round 1 to avoid BYE vs BYE.
-   Called after initial population assigns teams to CD R1.
-   Swaps entries between matches so each match has at most
-   one BYE, unless there are fewer than 8 real teams
-   (making some BYE vs BYE unavoidable).
-   ═══════════════════════════════════════════════════════════ */
 function redistributeConsolationR1(eventData) {
   const cd = eventData.consolationDraw;
   if (!cd || !cd.rounds || !cd.rounds[0]) return;
   const cdR1 = cd.rounds[0];
-
-  // Don't redistribute if any non-BYE match has already been completed
   if (cdR1.some(m => m.isComplete && !m.isBye)) return;
-
-  // Reset any auto-completed BYE matches so we can redistribute
   cdR1.forEach(m => {
     if (m.isBye) {
       m.isComplete = false;
@@ -787,42 +846,28 @@ function redistributeConsolationR1(eventData) {
       m.loserId = null;
     }
   });
-
-  // Collect all teams currently assigned
   const allTeams = [];
   cdR1.forEach(m => {
     allTeams.push(m.team1Id || null);
     allTeams.push(m.team2Id || null);
   });
-
-  // If not all teams assigned yet, skip
   if (allTeams.some(t => !t)) return;
-
-  // Check if any match has BYE vs BYE — if not, no redistribution needed
   let hasByeVsBye = false;
   for (const m of cdR1) {
     if (m.team1Id === 'BYE' && m.team2Id === 'BYE') { hasByeVsBye = true; break; }
   }
   if (!hasByeVsBye) return;
-
   const realTeams = allTeams.filter(t => t !== 'BYE');
   const byeCount = allTeams.filter(t => t === 'BYE').length;
-
-  // If no real teams, nothing to do
   if (realTeams.length === 0) return;
-
-  const numMatches = cdR1.length; // 8
-
+  const numMatches = cdR1.length;
   if (realTeams.length >= numMatches) {
-    // Enough real teams: each match gets at most one BYE
     const newSlots = new Array(numMatches * 2).fill(null);
     const matchIndices = Array.from({ length: numMatches }, (_, i) => i);
     fyShuffle(matchIndices);
     const byeMatchIndices = new Set(matchIndices.slice(0, byeCount));
-
     const realPool = [...realTeams];
     fyShuffle(realPool);
-
     for (let mi = 0; mi < numMatches; mi++) {
       const s1 = mi * 2, s2 = mi * 2 + 1;
       if (byeMatchIndices.has(mi)) {
@@ -834,26 +879,21 @@ function redistributeConsolationR1(eventData) {
         newSlots[s2] = realPool.pop();
       }
     }
-
     for (let mi = 0; mi < numMatches; mi++) {
       cdR1[mi].team1Id = newSlots[mi * 2];
       cdR1[mi].team2Id = newSlots[mi * 2 + 1];
     }
   } else {
-    // Fewer real teams than matches — minimize BYE vs BYE
-    // Place each real team in its own match paired with a BYE
     const newSlots = new Array(numMatches * 2).fill('BYE');
     const realPool = [...realTeams];
     fyShuffle(realPool);
     const matchIndices = Array.from({ length: numMatches }, (_, i) => i);
     fyShuffle(matchIndices);
-
     for (let i = 0; i < realPool.length; i++) {
       const mi = matchIndices[i];
       const slot = Math.random() < 0.5 ? mi * 2 : mi * 2 + 1;
       newSlots[slot] = realPool[i];
     }
-
     for (let mi = 0; mi < numMatches; mi++) {
       cdR1[mi].team1Id = newSlots[mi * 2];
       cdR1[mi].team2Id = newSlots[mi * 2 + 1];
@@ -861,23 +901,13 @@ function redistributeConsolationR1(eventData) {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Dynamic Waterfall Consolation population.
-   Instead of hard-wired sources from CD R1 losing teams only,
-   this collects FIRST-TIME consolation losing teams from ANY
-   CD round and places real players into WCD R1 before BYEs.
-   ═══════════════════════════════════════════════════════════ */
 function populateWaterfallDynamic(eventData) {
   const wcd = eventData.waterfallConsolationDraw;
   if (!wcd || !wcd.rounds || !wcd.rounds[0]) return;
   const wcdR1 = wcd.rounds[0];
-  const numMatches = wcdR1.length; // 4
-  const totalSlots = numMatches * 2; // 8
-
-  // Don't touch WCD R1 if any REAL (non-BYE) match has been completed
+  const numMatches = wcdR1.length;
+  const totalSlots = numMatches * 2;
   if (wcdR1.some(m => m.isComplete && !m.isBye)) return;
-
-  // FIRST: always reset any BYE-only WCD R1 matches so we can re-evaluate
   wcdR1.forEach(m => {
     if (m.isBye) {
       m.isComplete = false;
@@ -888,18 +918,13 @@ function populateWaterfallDynamic(eventData) {
       m.team2Id = null;
     }
   });
-
-  // Collect teams already placed in WCD R1 from real completed matches
   const alreadyInWCD = new Set();
   wcdR1.forEach(m => {
     if (m.team1Id && m.team1Id !== 'BYE') alreadyInWCD.add(m.team1Id);
     if (m.team2Id && m.team2Id !== 'BYE') alreadyInWCD.add(m.team2Id);
   });
-
-  // Scan ALL consolation rounds for real losing teams not yet in WCD
   const cd = eventData.consolationDraw;
   if (!cd || !cd.rounds) return;
-
   const realLosers = [];
   for (const round of cd.rounds) {
     for (const match of round) {
@@ -909,18 +934,12 @@ function populateWaterfallDynamic(eventData) {
       realLosers.push(lid);
     }
   }
-
-  // Check if more real losers could still come from CD or MD
   let potentialFutureRealLosers = 0;
-
-  // Check CD matches: count those with real teams assigned OR unresolved sources
   for (const round of cd.rounds) {
     for (const match of round) {
       if (match.isComplete) continue;
       const t1Real = match.team1Id && match.team1Id !== 'BYE' && match.team1Id !== 'TBD';
       const t2Real = match.team2Id && match.team2Id !== 'BYE' && match.team2Id !== 'TBD';
-      // Also count matches with unresolved sources — upstream matches may
-      // produce real teams that haven't been populated into CD yet
       const t1Pending = !match.team1Id && match.team1Source;
       const t2Pending = !match.team2Id && match.team2Source;
       if (t1Real || t2Real || t1Pending || t2Pending) {
@@ -928,15 +947,12 @@ function populateWaterfallDynamic(eventData) {
       }
     }
   }
-
-  // Also check MD for unresolved matches that feed losers into CD
   const md = eventData.mainDraw;
   if (md && md.rounds) {
     for (const round of md.rounds) {
       for (const match of round) {
         if (match.isComplete) continue;
         if (match.nextBracketType !== 'CD') continue;
-        // This MD match feeds a loser to CD and isn't resolved yet
         const t1Real = match.team1Id && match.team1Id !== 'BYE';
         const t2Real = match.team2Id && match.team2Id !== 'BYE';
         const t1Pending = !match.team1Id && match.team1Source;
@@ -947,18 +963,12 @@ function populateWaterfallDynamic(eventData) {
       }
     }
   }
-
-  // Build the entry list: real players first
   const entries = realLosers.slice(0, totalSlots);
-
-  // Only fill remaining slots with BYEs if NO more real losers can come
   if (potentialFutureRealLosers === 0) {
     while (entries.length < totalSlots) {
       entries.push('BYE');
     }
   }
-
-  // If no entries at all, clear WCD R1 and return
   if (entries.length === 0) {
     for (let mi = 0; mi < numMatches; mi++) {
       wcdR1[mi].team1Id = null;
@@ -966,19 +976,14 @@ function populateWaterfallDynamic(eventData) {
     }
     return;
   }
-
-  // === DISTRIBUTE ENTRIES ===
   if (entries.length >= totalSlots) {
-    // Full slate — distribute avoiding BYE vs BYE
     const realEntries = entries.filter(e => e !== 'BYE');
     const byeEntryCount = entries.filter(e => e === 'BYE').length;
-
     if (realEntries.length >= numMatches) {
       const newSlots = new Array(totalSlots).fill(null);
       const matchIndices = Array.from({ length: numMatches }, (_, i) => i);
       fyShuffle(matchIndices);
       const byeMatchSet = new Set(matchIndices.slice(0, byeEntryCount));
-
       const pool = [...realEntries];
       for (let mi = 0; mi < numMatches; mi++) {
         const s1 = mi * 2, s2 = mi * 2 + 1;
@@ -1016,8 +1021,6 @@ function populateWaterfallDynamic(eventData) {
       }
     }
   } else {
-    // Partial fill — place each real loser paired with a BYE so they can
-    // advance immediately (like a BYE round). Leave remaining matches empty.
     for (let mi = 0; mi < numMatches; mi++) {
       wcdR1[mi].team1Id = null;
       wcdR1[mi].team2Id = null;
@@ -1054,17 +1057,12 @@ function getSchoolAndRank(teamId) {
   return m ? { schoolNum: parseInt(m[1]), teamRank: parseInt(m[2]) } : { schoolNum: -1, teamRank: -1 };
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Check whether a team name is still a default placeholder
-   (i.e. user never renamed it). These become BYEs on shuffle.
-   ═══════════════════════════════════════════════════════════ */
 function isPlaceholderName(name) {
   return /^School \d+ - Team \d+$/.test(name);
 }
 
 function shuffleEventTeams(eventData) {
   const teams = [...eventData.teams];
-
   const realTeams = [];
   let byeCount = 0;
   teams.forEach(t => {
@@ -1074,26 +1072,19 @@ function shuffleEventTeams(eventData) {
       realTeams.push({ ...t });
     }
   });
-
   const HALF = TOTAL_TEAMS / 2;
   const MATCHES_PER_HALF = HALF / 2;
-
   const byesTopHalf = Math.ceil(byeCount / 2);
   const byesBotHalf = byeCount - byesTopHalf;
-
   const allowByeVsBye = byeCount > 16;
-
   if (!allowByeVsBye && (byesTopHalf > MATCHES_PER_HALF || byesBotHalf > MATCHES_PER_HALF)) {
     alert('Too many BYEs to create a valid draw (a BYE cannot face a BYE).');
     return;
   }
-
   const arr = new Array(TOTAL_TEAMS).fill(null);
-  const mkBye = () => ({ id: 'BYE', name: 'BYE', originalPlayerSlot: -1, mainDrawLosses: 0, consolationLosses: 0 });
-
+  const mkBye = () => ({ id: 'BYE', name: 'BYE', customDisplayName: '', originalPlayerSlot: -1, mainDrawLosses: 0, consolationLosses: 0 });
   const realSlotsTop = [];
   const realSlotsBot = [];
-
   if (!allowByeVsBye) {
     let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
     let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
@@ -1101,7 +1092,6 @@ function shuffleEventTeams(eventData) {
     fyShuffle(botMI);
     const topByeSet = new Set(topMI.slice(0, byesTopHalf));
     const botByeSet = new Set(botMI.slice(0, byesBotHalf));
-
     for (let mi = 0; mi < MATCHES_PER_HALF; mi++) {
       const s1 = mi * 2, s2 = mi * 2 + 1;
       if (topByeSet.has(mi)) {
@@ -1126,16 +1116,13 @@ function shuffleEventTeams(eventData) {
     const realCount = realTeams.length;
     const realTopCount = Math.ceil(realCount / 2);
     const realBotCount = realCount - realTopCount;
-
     let topMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
     let botMI = Array.from({ length: MATCHES_PER_HALF }, (_, i) => i);
     fyShuffle(topMI);
     fyShuffle(botMI);
-
     for (let i = 0; i < TOTAL_TEAMS; i++) {
       arr[i] = mkBye();
     }
-
     for (let k = 0; k < realTopCount; k++) {
       const mi = topMI[k];
       const s1 = mi * 2, s2 = mi * 2 + 1;
@@ -1151,10 +1138,8 @@ function shuffleEventTeams(eventData) {
       realSlotsBot.push(realSlot);
     }
   }
-
   fyShuffle(realSlotsTop);
   fyShuffle(realSlotsBot);
-
   const t1s = [], t2s = [];
   realTeams.forEach(t => {
     const { teamRank } = getSchoolAndRank(t.id);
@@ -1162,10 +1147,8 @@ function shuffleEventTeams(eventData) {
   });
   fyShuffle(t1s);
   fyShuffle(t2s);
-
   const loc = {};
   const PER_HALF = Math.min(Math.ceil(t1s.length / 2), realSlotsTop.length);
-
   for (let i = 0; i < PER_HALF && realSlotsTop.length > 0; i++) {
     arr[realSlotsTop.pop()] = t1s[i];
     loc[getSchoolAndRank(t1s[i].id).schoolNum] = 'top';
@@ -1174,7 +1157,6 @@ function shuffleEventTeams(eventData) {
     arr[realSlotsBot.pop()] = t1s[i];
     loc[getSchoolAndRank(t1s[i].id).schoolNum] = 'bottom';
   }
-
   t2s.forEach(t => {
     const sn = getSchoolAndRank(t.id).schoolNum;
     if (loc[sn] === 'top' && realSlotsBot.length > 0) {
@@ -1187,9 +1169,7 @@ function shuffleEventTeams(eventData) {
       arr[realSlotsBot.pop()] = t;
     }
   });
-
   eventData.teams = arr;
-
   [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw].forEach(draw => {
     if (!draw || !draw.rounds) return;
     draw.rounds.forEach(round => round.forEach(m => {
@@ -1202,12 +1182,12 @@ function shuffleEventTeams(eventData) {
 }
 
 function exportTeamsCSV(tournamentData) {
-  let csv = "EventCode,EventName,TeamID,TeamOriginalSlot,TeamName\r\n";
+  let csv = "EventCode,EventName,TeamID,TeamOriginalSlot,TeamName,CustomDisplayName\r\n";
   Object.keys(tournamentData).forEach(eid => {
     const ev = tournamentData[eid];
     if (ev && ev.teams) {
       ev.teams.forEach(t => {
-        csv += `"${eid}","${EVENT_CODES[eid]}","${t.id}",${t.originalPlayerSlot},"${t.name.replace(/"/g, '""')}"\r\n`;
+        csv += `"${eid}","${EVENT_CODES[eid]}","${t.id}",${t.originalPlayerSlot},"${t.name.replace(/"/g, '""')}","${(t.customDisplayName || '').replace(/"/g, '""')}"\r\n`;
       });
     }
   });
@@ -1220,6 +1200,7 @@ function parseTeamsCSV(csvText) {
   const map = {};
   headers.forEach((h, i) => { map[h] = i; });
   if (!['EventCode', 'TeamID', 'TeamName'].every(k => k in map)) return { error: 'Missing required columns: EventCode, TeamID, TeamName' };
+  const hasCustomName = 'CustomDisplayName' in map;
   const updates = [];
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
@@ -1230,7 +1211,12 @@ function parseTeamsCSV(csvText) {
       else cur += ch;
     }
     data.push(cur.trim().replace(/^"|"$/g, ''));
-    updates.push({ eventCode: data[map.EventCode], teamId: data[map.TeamID], teamName: data[map.TeamName] });
+    updates.push({
+      eventCode: data[map.EventCode],
+      teamId: data[map.TeamID],
+      teamName: data[map.TeamName],
+      customDisplayName: hasCustomName ? (data[map.CustomDisplayName] || '') : undefined
+    });
   }
   return { updates };
 }
@@ -1242,15 +1228,9 @@ function generateShareCode() {
   return code;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Build sequential match number map for an event.
-   Numbers are assigned in SCHEDULING ORDER — interleaving
-   MD, CD and WCD rounds so players get rest between matches.
-   ═══════════════════════════════════════════════════════════ */
 function buildMatchNumberMap(eventData) {
   const map = {};
   let num = 1;
-
   const schedule = [
     { key: 'mainDraw', roundIdx: 0 },
     { key: 'mainDraw', roundIdx: 1 },
@@ -1269,7 +1249,6 @@ function buildMatchNumberMap(eventData) {
     { key: 'consolationDraw', roundIdx: 6 },
     { key: 'consolationDraw', roundIdx: 7 },
   ];
-
   for (const { key, roundIdx } of schedule) {
     const draw = eventData[key];
     if (!draw || !draw.rounds || !draw.rounds[roundIdx]) continue;
@@ -1277,36 +1256,33 @@ function buildMatchNumberMap(eventData) {
       map[match.id] = num++;
     }
   }
-
   return map;
 }
 
 function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
   if (!searchTerm || searchTerm.trim().length < 2) return [];
   const term = searchTerm.toLowerCase().trim();
-
   const matchingTeamIds = new Set();
   eventData.teams.forEach(t => {
-    if (t.name.toLowerCase().includes(term)) {
+    if (t.name.toLowerCase().includes(term) || (t.customDisplayName && t.customDisplayName.toLowerCase().includes(term))) {
       matchingTeamIds.add(t.id);
     }
   });
   if (matchingTeamIds.size === 0) return [];
-
   const results = [];
   const drawTypes = [
     { key: 'mainDraw', type: 'MD', label: 'Main Draw' },
     { key: 'consolationDraw', type: 'CD', label: 'Consolation' },
     { key: 'waterfallConsolationDraw', type: 'WCD', label: 'Waterfall' }
   ];
-
   const getName = (teamId) => {
     if (!teamId) return 'TBD';
     if (teamId === 'BYE') return 'BYE';
     const t = eventData.teams.find(x => x.id === teamId);
-    return t ? t.name : teamId;
+    if (!t) return teamId;
+    if (t.customDisplayName) return `${t.customDisplayName} (${t.name})`;
+    return t.name;
   };
-
   for (const { key, type, label } of drawTypes) {
     const draw = eventData[key];
     if (!draw || !draw.rounds) continue;
@@ -1315,7 +1291,6 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
         const t1Matches = match.team1Id && matchingTeamIds.has(match.team1Id);
         const t2Matches = match.team2Id && matchingTeamIds.has(match.team2Id);
         if (!t1Matches && !t2Matches) continue;
-
         const playerTeamId = t1Matches ? match.team1Id : match.team2Id;
         let status = 'waiting';
         if (match.isComplete) {
@@ -1329,7 +1304,6 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
         } else if (match.team1Id && match.team2Id && match.team1Id !== 'TBD' && match.team2Id !== 'TBD') {
           status = 'upcoming';
         }
-
         results.push({
           match,
           drawType: type,
@@ -1343,21 +1317,14 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
       }
     }
   }
-
   results.sort((a, b) => a.matchNumber - b.matchNumber);
   return results;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Cascade reset — collect all matches downstream of a given
-   match (via winning team/losing team source references) and
-   reset them. This powers the "Edit Score" feature.
-   ═══════════════════════════════════════════════════════════ */
 function collectDependentMatchIds(eventData, matchId, collected) {
   if (!collected) collected = new Set();
   if (collected.has(matchId)) return collected;
   collected.add(matchId);
-
   const allDraws = [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw];
   for (const draw of allDraws) {
     if (!draw || !draw.rounds) continue;
@@ -1373,13 +1340,10 @@ function collectDependentMatchIds(eventData, matchId, collected) {
       }
     }
   }
-
-  /* Also check loserFeedsToNextBracketMatchId references */
   const sourceMatch = findMatchAcrossDraws(eventData, matchId);
   if (sourceMatch && sourceMatch.loserFeedsToNextBracketMatchId) {
     collectDependentMatchIds(eventData, sourceMatch.loserFeedsToNextBracketMatchId, collected);
   }
-
   return collected;
 }
 
@@ -1401,21 +1365,18 @@ function countDownstreamPlayed(eventData, matchId) {
 
 function resetMatchAndCascade(eventData, targetMatchId) {
   const deps = collectDependentMatchIds(eventData, targetMatchId);
-
   const allDraws = [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw];
   for (const draw of allDraws) {
     if (!draw || !draw.rounds) continue;
     for (const round of draw.rounds) {
       for (const m of round) {
         if (!deps.has(m.id)) continue;
-
         m.winnerId = null;
         m.loserId = null;
         m.isComplete = false;
         m.isBye = false;
         m.score1 = [];
         m.score2 = [];
-
         if (m.id !== targetMatchId) {
           if (m.team1Source && (m.team1Source.type === 'winner' || m.team1Source.type === 'loser') && deps.has(m.team1Source.matchId)) {
             m.team1Id = null;
@@ -1427,14 +1388,10 @@ function resetMatchAndCascade(eventData, targetMatchId) {
       }
     }
   }
-
-  /* Also reset WCD R1 entries since they are dynamically populated
-     and may depend on now-reset CD match results. */
   const wcd = eventData.waterfallConsolationDraw;
   if (wcd && wcd.rounds && wcd.rounds[0]) {
     wcd.rounds[0].forEach(m => {
-      if (deps.has(m.id)) return; // already handled
-      // WCD R1 has no source refs — reset unconditionally so dynamic populator can redo
+      if (deps.has(m.id)) return;
       m.team1Id = null;
       m.team2Id = null;
       m.winnerId = null;
@@ -1444,7 +1401,6 @@ function resetMatchAndCascade(eventData, targetMatchId) {
       m.score1 = [];
       m.score2 = [];
     });
-    // Also reset WCD later rounds that depend on WCD R1
     for (let ri = 1; ri < wcd.rounds.length; ri++) {
       wcd.rounds[ri].forEach(m => {
         m.team1Id = null;
@@ -1514,7 +1470,6 @@ async function getUserTournaments(userId, userEmail) {
   const results = [];
   const owned = await db.collection('tournaments').where('ownerId', '==', userId).get();
   owned.forEach(doc => results.push({ id: doc.id, ...doc.data(), _role: 'owner' }));
-
   if (userEmail) {
     const editable = await db.collection('tournaments').where('authorizedEditors', 'array-contains', userEmail).get();
     editable.forEach(doc => {
@@ -1523,7 +1478,6 @@ async function getUserTournaments(userId, userEmail) {
       }
     });
   }
-
   results.sort((a, b) => {
     const ta = a.createdAt ? a.createdAt.seconds : 0;
     const tb = b.createdAt ? b.createdAt.seconds : 0;
@@ -1748,11 +1702,9 @@ function ShareModal({ shareCode, onClose }) {
     let cancelled = false;
     let attempts = 0;
     const maxAttempts = 25;
-
     const tryGenerate = () => {
       if (cancelled) return;
       attempts++;
-
       if (typeof QRCode !== 'undefined' && typeof QRCode.toDataURL === 'function') {
         QRCode.toDataURL(shareUrl, {
           width: 220, margin: 2,
@@ -1769,7 +1721,6 @@ function ShareModal({ shareCode, onClose }) {
         if (!cancelled) setQrError(true);
       }
     };
-
     tryGenerate();
     return () => { cancelled = true; };
   }, [shareUrl]);
@@ -1922,12 +1873,92 @@ function PlayerSearchBar({ eventData, matchNumberMap, onScrollToMatch }) {
   );
 }
 
-function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, matchNumber, highlightedMatchId }) {
-  const getName = (teamId) => {
+/* ═══════════════════════════════════════════════════════════
+   Inline Custom Name Editor — per-team-slot in match card
+   ═══════════════════════════════════════════════════════════ */
+function CustomNameEditor({ teamId, currentCustomName, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(currentCustomName || '');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    setValue(currentCustomName || '');
+  }, [currentCustomName]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const handleSave = () => {
+    onSave(teamId, value.trim());
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setValue(currentCustomName || '');
+    setEditing(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSave();
+    if (e.key === 'Escape') handleCancel();
+  };
+
+  if (!teamId || teamId === 'BYE') return null;
+
+  if (editing) {
+    return (
+      <div className="custom-name-inline-edit" onClick={e => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Player name..."
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          maxLength={60}
+        />
+        <button className="cn-save" onClick={handleSave} title="Save">✓</button>
+        <button className="cn-cancel" onClick={handleCancel} title="Cancel">✕</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="custom-name-row">
+      {currentCustomName ? (
+        <span className="custom-name-tag">{currentCustomName}</span>
+      ) : null}
+      <button
+        className="custom-name-edit-btn"
+        onClick={e => { e.stopPropagation(); setEditing(true); }}
+        title={currentCustomName ? 'Edit player name' : 'Add player name'}
+      >
+        {currentCustomName ? '✎' : '+ name'}
+      </button>
+    </div>
+  );
+}
+
+function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, matchNumber, highlightedMatchId }) {
+  const getTeamObj = (teamId) => {
+    if (!teamId || teamId === 'BYE') return null;
+    return eventData.teams.find(x => x.id === teamId) || null;
+  };
+
+  const getDisplayName = (teamId) => {
     if (!teamId) return 'TBD';
     if (teamId === 'BYE') return 'BYE';
-    const t = eventData.teams.find(x => x.id === teamId);
+    const t = getTeamObj(teamId);
     return t ? t.name : teamId;
+  };
+
+  const getCustomName = (teamId) => {
+    const t = getTeamObj(teamId);
+    return t ? (t.customDisplayName || '') : '';
   };
 
   const bo3 = isBo3(match, drawType);
@@ -1955,8 +1986,10 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, match
   const t2cls = match.isComplete ? (match.winnerId === match.team2Id ? 'winner' : 'loser') : '';
 
   const isHighlighted = highlightedMatchId === match.id;
-
   const downstreamCount = canEdit ? countDownstreamPlayed(eventData, match.id) : 0;
+
+  const t1Custom = getCustomName(match.team1Id);
+  const t2Custom = getCustomName(match.team2Id);
 
   return (
     <div
@@ -1968,7 +2001,18 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, match
         <span className="match-label" style={{ marginBottom: 0 }}>{label}</span>
       </div>
       <div className={`match-team ${t1cls}`}>
-        <span className="match-team-name">{getName(match.team1Id)}</span>
+        <div className="match-team-name-block">
+          <div className="match-team-name">
+            {t1Custom ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t1Custom}</span> {getDisplayName(match.team1Id)}</> : getDisplayName(match.team1Id)}
+          </div>
+          {!readOnly && onCustomName && match.team1Id && match.team1Id !== 'BYE' && (
+            <CustomNameEditor
+              teamId={match.team1Id}
+              currentCustomName={t1Custom}
+              onSave={onCustomName}
+            />
+          )}
+        </div>
         <div className="match-scores">
           {Array.from({ length: numGames }).map((_, g) => (
             <input key={g} type="number" className="score-box" min={0} max={30} disabled={match.isComplete || readOnly}
@@ -1977,7 +2021,18 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, match
         </div>
       </div>
       <div className={`match-team ${t2cls}`}>
-        <span className="match-team-name">{getName(match.team2Id)}</span>
+        <div className="match-team-name-block">
+          <div className="match-team-name">
+            {t2Custom ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t2Custom}</span> {getDisplayName(match.team2Id)}</> : getDisplayName(match.team2Id)}
+          </div>
+          {!readOnly && onCustomName && match.team2Id && match.team2Id !== 'BYE' && (
+            <CustomNameEditor
+              teamId={match.team2Id}
+              currentCustomName={t2Custom}
+              onSave={onCustomName}
+            />
+          )}
+        </div>
         <div className="match-scores">
           {Array.from({ length: numGames }).map((_, g) => (
             <input key={g} type="number" className="score-box" min={0} max={30} disabled={match.isComplete || readOnly}
@@ -1994,13 +2049,13 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, match
           )}
         </>
       )}
-      {match.isBye && <div className="match-bye-text">{getName(match.winnerId)} advances (BYE)</div>}
-      {match.isComplete && !match.isBye && <div className="match-winner-text">✓ Winning Team: {getName(match.winnerId)}</div>}
+      {match.isBye && <div className="match-bye-text">{getDisplayName(match.winnerId)} advances (BYE)</div>}
+      {match.isComplete && !match.isBye && <div className="match-winner-text">✓ Winning Team: {getDisplayName(match.winnerId)}</div>}
     </div>
   );
 }
 
-function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, matchNumberMap, highlightedMatchId }) {
+function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, matchNumberMap, highlightedMatchId }) {
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
     MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final'],
@@ -2023,6 +2078,7 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, mat
               readOnly={readOnly}
               onSave={onSave}
               onEdit={onEdit}
+              onCustomName={onCustomName}
               matchNumber={matchNumberMap ? matchNumberMap[m.id] : null}
               highlightedMatchId={highlightedMatchId}
             />
@@ -2058,6 +2114,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           if (t.originalPlayerSlot === undefined) t.originalPlayerSlot = idx;
           t.mainDrawLosses = t.mainDrawLosses || 0;
           t.consolationLosses = t.consolationLosses || 0;
+          if (t.customDisplayName === undefined) t.customDisplayName = '';
         });
         populateAllDraws(ev[eid]);
       });
@@ -2076,7 +2133,12 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           if (!Array.isArray(next[eid].mainDraw?.rounds)) next[eid].mainDraw = generateMainDraw();
           if (!Array.isArray(next[eid].consolationDraw?.rounds)) next[eid].consolationDraw = generateConsolationDraw();
           if (!Array.isArray(next[eid].waterfallConsolationDraw?.rounds)) next[eid].waterfallConsolationDraw = generateWaterfallDraw();
-          if (data.teams) populateAllDraws(next[eid]);
+          if (data.teams) {
+            next[eid].teams.forEach(t => {
+              if (t.customDisplayName === undefined) t.customDisplayName = '';
+            });
+            populateAllDraws(next[eid]);
+          }
           return next;
         });
       })
@@ -2125,7 +2187,6 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
       msg = `This will also reset ${downstream} downstream match${downstream !== 1 ? 'es' : ''} whose results depend on this one. Continue?`;
     }
     if (!confirm(msg)) return;
-
     const ev = JSON.parse(JSON.stringify(events[activeEvent]));
     resetMatchAndCascade(ev, matchId);
     populateAllDraws(ev);
@@ -2133,6 +2194,18 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     setEvents(newEvents);
     await saveEvent(activeEvent, ev);
   };
+
+  /* ═══════ Custom Display Name handler ═══════ */
+  const handleCustomNameUpdate = useCallback(async (teamId, customName) => {
+    if (!canEdit) return;
+    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
+    const team = ev.teams.find(t => t.id === teamId);
+    if (!team) return;
+    team.customDisplayName = customName;
+    const newEvents = { ...events, [activeEvent]: ev };
+    setEvents(newEvents);
+    await saveEvent(activeEvent, ev);
+  }, [canEdit, events, activeEvent, tournamentId]);
 
   const handleSaveTeams = async () => {
     if (!canEdit) return;
@@ -2208,6 +2281,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
             if (t.originalPlayerSlot === undefined) t.originalPlayerSlot = idx;
             t.mainDrawLosses = t.mainDrawLosses || 0;
             t.consolationLosses = t.consolationLosses || 0;
+            if (t.customDisplayName === undefined) t.customDisplayName = '';
           });
           populateAllDraws(imported[eid]);
         });
@@ -2244,13 +2318,19 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
       result.updates.forEach(u => {
         if (evCopy[u.eventCode] && evCopy[u.eventCode].teams) {
           const team = evCopy[u.eventCode].teams.find(t => t.id === u.teamId);
-          if (team && team.name !== u.teamName) { team.name = u.teamName; count++; }
+          if (team) {
+            if (team.name !== u.teamName) { team.name = u.teamName; count++; }
+            if (u.customDisplayName !== undefined && team.customDisplayName !== u.customDisplayName) {
+              team.customDisplayName = u.customDisplayName;
+              count++;
+            }
+          }
         }
       });
       if (count > 0) {
         setEvents(evCopy);
         await saveAllEvents(tournamentId, evCopy);
-        alert(`${count} team name(s) updated.`);
+        alert(`${count} update(s) applied.`);
       } else { alert('No names changed.'); }
     };
     inp.click();
@@ -2350,15 +2430,15 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           </div>
           <div className="card draw-section">
             <h3>Main Draw</h3>
-            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Consolation Draw</h3>
-            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Waterfall Consolations</h3>
-            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
         </>
       )}
