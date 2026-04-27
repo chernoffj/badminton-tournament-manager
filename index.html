@@ -164,7 +164,47 @@ input, button, select, textarea { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   margin-bottom: 6px;
+}
+.match-label-row .label-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.match-marshal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+.match-marshal-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.match-marshal-toggle.on {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: var(--green);
+}
+.match-marshal-toggle.on:hover {
+  background: var(--green);
+  color: #fff;
 }
 .player-search-bar {
   background: var(--bg-card);
@@ -570,6 +610,7 @@ function makeMatch(id, round, matchInRound, team1Source, team2Source, opts = {})
     isSF: !!opts.isSF, isFinal: !!opts.isFinal,
     isOverallChampionship: !!opts.isOverallChampionship,
     isSecondPlacePlayoff: !!opts.isSecondPlacePlayoff,
+    marshalled: false,
     loserFeedsToNextBracketMatchId: opts.loserFeed || null,
     loserFeedsToNextBracketSlotNumber: opts.loserSlot || null,
     nextBracketType: opts.nextBracketType || null
@@ -586,24 +627,30 @@ function generateMainDraw() {
   }
   rounds.push(r);
   r = [];
+  // Stagger MD R2 losers across CD R2 by half (offset 4 of 8) so that the
+  // CD R2 opponent paths come from a non-overlapping MD R1 cluster — this
+  // prevents the common BYE-driven rematch where a CD R1 BYE-winner meets
+  // their original MD R1 opponent again in CD R2.
   for (let i = 0; i < 8; i++) {
     r.push(makeMatch(`M2.${i+1}`, 2, i+1,
       { type: 'winner', matchId: `M1.${i*2+1}` }, { type: 'winner', matchId: `M1.${i*2+2}` },
-      { customLabel: `MD R2.${i+1}`, loserFeed: `CD2.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
+      { customLabel: `MD R2.${i+1}`, loserFeed: `CD2.${((i + 4) % 8) + 1}`, loserSlot: 2, nextBracketType: 'CD' }));
   }
   rounds.push(r);
   r = [];
+  // Stagger MD QF losers across CD R4 by half (offset 2 of 4) — same idea.
   for (let i = 0; i < 4; i++) {
     r.push(makeMatch(`M3.${i+1}`, 3, i+1,
       { type: 'winner', matchId: `M2.${i*2+1}` }, { type: 'winner', matchId: `M2.${i*2+2}` },
-      { customLabel: `MD QF.${i+1}`, loserFeed: `CD4.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
+      { customLabel: `MD QF.${i+1}`, loserFeed: `CD4.${((i + 2) % 4) + 1}`, loserSlot: 2, nextBracketType: 'CD' }));
   }
   rounds.push(r);
   r = [];
+  // Stagger MD SF losers across CD R6 by half (offset 1 of 2).
   for (let i = 0; i < 2; i++) {
     r.push(makeMatch(`M4.${i+1}`, 4, i+1,
       { type: 'winner', matchId: `M3.${i*2+1}` }, { type: 'winner', matchId: `M3.${i*2+2}` },
-      { customLabel: `MD SF.${i+1}`, isSF: true, loserFeed: `CD6.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
+      { customLabel: `MD SF.${i+1}`, isSF: true, loserFeed: `CD6.${((i + 1) % 2) + 1}`, loserSlot: 2, nextBracketType: 'CD' }));
   }
   rounds.push(r);
   r = [makeMatch('M5.1', 5, 1,
@@ -623,9 +670,12 @@ function generateConsolationDraw() {
   }
   rounds.push(r);
   r = [];
+  // CD R2 pulls its MD R2 losers staggered by half (matches the offset in
+  // generateMainDraw) so the loser arrives in a CD slot whose path comes
+  // from a different MD R1 cluster — avoids rematches.
   for (let i = 0; i < 8; i++) {
     r.push(makeMatch(`CD2.${i+1}`, 2, i+1,
-      { type: 'winner', matchId: `CD1.${i+1}` }, { type: 'loser', matchId: `M2.${i+1}` },
+      { type: 'winner', matchId: `CD1.${i+1}` }, { type: 'loser', matchId: `M2.${((i + 4) % 8) + 1}` },
       { customLabel: `CD R2.${i+1}` }));
   }
   rounds.push(r);
@@ -637,9 +687,10 @@ function generateConsolationDraw() {
   }
   rounds.push(r);
   r = [];
+  // CD R4 pulls its MD QF losers staggered by half — same reasoning.
   for (let i = 0; i < 4; i++) {
     r.push(makeMatch(`CD4.${i+1}`, 4, i+1,
-      { type: 'winner', matchId: `CD3.${i+1}` }, { type: 'loser', matchId: `M3.${i+1}` },
+      { type: 'winner', matchId: `CD3.${i+1}` }, { type: 'loser', matchId: `M3.${((i + 2) % 4) + 1}` },
       { customLabel: `CD R4.${i+1} (vs QF Losing Teams)` }));
   }
   rounds.push(r);
@@ -651,9 +702,10 @@ function generateConsolationDraw() {
   }
   rounds.push(r);
   r = [];
+  // CD R6 pulls its MD SF losers staggered by half — same reasoning.
   for (let i = 0; i < 2; i++) {
     r.push(makeMatch(`CD6.${i+1}`, 6, i+1,
-      { type: 'winner', matchId: `CD5.${i+1}` }, { type: 'loser', matchId: `M4.${i+1}` },
+      { type: 'winner', matchId: `CD5.${i+1}` }, { type: 'loser', matchId: `M4.${((i + 1) % 2) + 1}` },
       { customLabel: `CD SF.${i+1}` }));
   }
   rounds.push(r);
@@ -898,6 +950,22 @@ function redistributeConsolationR1(eventData) {
         cdR1[mi].team2Id = 'BYE';
       }
     }
+  }
+  // After CD R1 reshuffle: clear stale propagated values from later rounds
+  // so populateDraw can fill them correctly from the new R1 arrangement.
+  for (let ri = 1; ri < cd.rounds.length; ri++) {
+    cd.rounds[ri].forEach(m => {
+      if (m.isBye || !m.isComplete) {
+        m.team1Id = null;
+        m.team2Id = null;
+        m.winnerId = null;
+        m.loserId = null;
+        m.isComplete = false;
+        m.isBye = false;
+        m.score1 = [];
+        m.score2 = [];
+      }
+    });
   }
 }
 
@@ -1177,6 +1245,7 @@ function shuffleEventTeams(eventData) {
       m.score1 = []; m.score2 = [];
       m.winnerId = null; m.loserId = null;
       m.isComplete = false; m.isBye = false;
+      m.marshalled = false;
     }));
   });
 }
@@ -1377,6 +1446,7 @@ function resetMatchAndCascade(eventData, targetMatchId) {
         m.isBye = false;
         m.score1 = [];
         m.score2 = [];
+        m.marshalled = false;
         if (m.id !== targetMatchId) {
           if (m.team1Source && (m.team1Source.type === 'winner' || m.team1Source.type === 'loser') && deps.has(m.team1Source.matchId)) {
             m.team1Id = null;
@@ -1943,7 +2013,79 @@ function CustomNameEditor({ teamId, currentCustomName, onSave }) {
   );
 }
 
-function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, matchNumber, highlightedMatchId }) {
+/* ═══════════════════════════════════════════════════════════
+   Inline BYE Label Editor — per-BYE-slot in match card
+   Mirrors CustomNameEditor but writes by team-array slot index
+   since all BYEs share id 'BYE'.
+   ═══════════════════════════════════════════════════════════ */
+function ByeNameEditor({ slotIndex, currentCustomName, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(currentCustomName || '');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    setValue(currentCustomName || '');
+  }, [currentCustomName]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const handleSave = () => {
+    onSave(slotIndex, value.trim());
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setValue(currentCustomName || '');
+    setEditing(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSave();
+    if (e.key === 'Escape') handleCancel();
+  };
+
+  if (slotIndex === null || slotIndex === undefined) return null;
+
+  if (editing) {
+    return (
+      <div className="custom-name-inline-edit" onClick={e => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="BYE label..."
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          maxLength={60}
+        />
+        <button className="cn-save" onClick={handleSave} title="Save">✓</button>
+        <button className="cn-cancel" onClick={handleCancel} title="Cancel">✕</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="custom-name-row">
+      {currentCustomName ? (
+        <span className="custom-name-tag">{currentCustomName}</span>
+      ) : null}
+      <button
+        className="custom-name-edit-btn"
+        onClick={e => { e.stopPropagation(); setEditing(true); }}
+        title={currentCustomName ? 'Edit BYE label' : 'Add BYE label'}
+      >
+        {currentCustomName ? '✎' : '+ label'}
+      </button>
+    </div>
+  );
+}
+
+function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onByeCustomName, onToggleMarshal, matchNumber, highlightedMatchId }) {
   const getTeamObj = (teamId) => {
     if (!teamId || teamId === 'BYE') return null;
     return eventData.teams.find(x => x.id === teamId) || null;
@@ -1956,7 +2098,19 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
     return t ? t.name : teamId;
   };
 
-  const getCustomName = (teamId) => {
+  const getByeSlot = (teamId, source) => {
+    if (teamId !== 'BYE') return null;
+    if (source && source.type === 'seed' && Number.isInteger(source.slot)) return source.slot;
+    return null;
+  };
+
+  const getCustomName = (teamId, source) => {
+    if (teamId === 'BYE') {
+      const slot = getByeSlot(teamId, source);
+      if (slot === null) return '';
+      const t = eventData.teams[slot];
+      return t ? (t.customDisplayName || '') : '';
+    }
     const t = getTeamObj(teamId);
     return t ? (t.customDisplayName || '') : '';
   };
@@ -1988,8 +2142,10 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
   const isHighlighted = highlightedMatchId === match.id;
   const downstreamCount = canEdit ? countDownstreamPlayed(eventData, match.id) : 0;
 
-  const t1Custom = getCustomName(match.team1Id);
-  const t2Custom = getCustomName(match.team2Id);
+  const t1Custom = getCustomName(match.team1Id, match.team1Source);
+  const t2Custom = getCustomName(match.team2Id, match.team2Source);
+  const t1ByeSlot = getByeSlot(match.team1Id, match.team1Source);
+  const t2ByeSlot = getByeSlot(match.team2Id, match.team2Source);
 
   return (
     <div
@@ -1997,8 +2153,20 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
       className={`match-card ${match.isComplete ? (match.isBye ? 'bye' : 'complete') : ''} ${isHighlighted ? 'highlighted' : ''}`}
     >
       <div className="match-label-row">
-        {matchNumber && <span className="match-number-badge">Match #{matchNumber}</span>}
-        <span className="match-label" style={{ marginBottom: 0 }}>{label}</span>
+        <div className="label-left">
+          {matchNumber && <span className="match-number-badge">Match #{matchNumber}</span>}
+          <span className="match-label" style={{ marginBottom: 0 }}>{label}</span>
+        </div>
+        {!readOnly && onToggleMarshal && !match.isBye && (
+          <button
+            type="button"
+            className={`match-marshal-toggle ${match.marshalled ? 'on' : ''}`}
+            onClick={() => onToggleMarshal(match.id, drawType)}
+            title={match.marshalled ? 'Marshalled — click to clear' : 'Click to mark as marshalled'}
+          >
+            {match.marshalled ? '✓ M' : 'M'}
+          </button>
+        )}
       </div>
       <div className={`match-team ${t1cls}`}>
         <div className="match-team-name-block">
@@ -2010,6 +2178,13 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
               teamId={match.team1Id}
               currentCustomName={t1Custom}
               onSave={onCustomName}
+            />
+          )}
+          {!readOnly && onByeCustomName && t1ByeSlot !== null && (
+            <ByeNameEditor
+              slotIndex={t1ByeSlot}
+              currentCustomName={t1Custom}
+              onSave={onByeCustomName}
             />
           )}
         </div>
@@ -2030,6 +2205,13 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
               teamId={match.team2Id}
               currentCustomName={t2Custom}
               onSave={onCustomName}
+            />
+          )}
+          {!readOnly && onByeCustomName && t2ByeSlot !== null && (
+            <ByeNameEditor
+              slotIndex={t2ByeSlot}
+              currentCustomName={t2Custom}
+              onSave={onByeCustomName}
             />
           )}
         </div>
@@ -2055,7 +2237,7 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
   );
 }
 
-function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, matchNumberMap, highlightedMatchId }) {
+function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onByeCustomName, onToggleMarshal, matchNumberMap, highlightedMatchId }) {
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
     MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final'],
@@ -2079,6 +2261,8 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onC
               onSave={onSave}
               onEdit={onEdit}
               onCustomName={onCustomName}
+              onByeCustomName={onByeCustomName}
+              onToggleMarshal={onToggleMarshal}
               matchNumber={matchNumberMap ? matchNumberMap[m.id] : null}
               highlightedMatchId={highlightedMatchId}
             />
@@ -2202,6 +2386,31 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     const team = ev.teams.find(t => t.id === teamId);
     if (!team) return;
     team.customDisplayName = customName;
+    const newEvents = { ...events, [activeEvent]: ev };
+    setEvents(newEvents);
+    await saveEvent(activeEvent, ev);
+  }, [canEdit, events, activeEvent, tournamentId]);
+
+  /* ═══════ BYE Label handler — writes by team-array slot index since
+     all BYE teams share id 'BYE'. ═══════ */
+  const handleByeCustomNameUpdate = useCallback(async (slotIndex, customName) => {
+    if (!canEdit) return;
+    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
+    const team = ev.teams[slotIndex];
+    if (!team || team.id !== 'BYE') return;
+    team.customDisplayName = customName;
+    const newEvents = { ...events, [activeEvent]: ev };
+    setEvents(newEvents);
+    await saveEvent(activeEvent, ev);
+  }, [canEdit, events, activeEvent, tournamentId]);
+
+  /* ═══════ Marshal toggle handler ═══════ */
+  const handleToggleMarshal = useCallback(async (matchId, drawType) => {
+    if (!canEdit) return;
+    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
+    const match = findMatch(ev, drawType, matchId);
+    if (!match) return;
+    match.marshalled = !match.marshalled;
     const newEvents = { ...events, [activeEvent]: ev };
     setEvents(newEvents);
     await saveEvent(activeEvent, ev);
@@ -2344,6 +2553,19 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     });
   };
 
+  // BYE labels write by team-array slot index since all BYEs share id 'BYE'.
+  // Local-only update; persisted via the "Save Teams" button like player names.
+  const updateByeCustomName = (eventId, slotIndex, name) => {
+    setEvents(prev => {
+      const next = { ...prev };
+      next[eventId] = {
+        ...next[eventId],
+        teams: next[eventId].teams.map((t, i) => i === slotIndex ? { ...t, customDisplayName: name } : t)
+      };
+      return next;
+    });
+  };
+
   const handleScrollToMatch = useCallback((matchId) => {
     setHighlightedMatchId(matchId);
     setTimeout(() => {
@@ -2420,25 +2642,48 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
               {ev.teams.map((team, idx) => (
                 <div key={team.id + '_' + idx} className="team-row">
                   <label>{idx + 1}.</label>
-                  <input value={team.name} disabled={!canEdit || team.id === 'BYE'}
-                    onChange={e => updateTeamName(activeEvent, team.id, e.target.value)}
-                    style={team.id === 'BYE' ? { color: 'var(--text-dim)', fontStyle: 'italic' } : {}}
-                  />
+                  {team.id === 'BYE' ? (
+                    <>
+                      <span style={{
+                        fontSize: '0.68rem',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: 'var(--text-dim)',
+                        background: 'var(--bg-card-hover)',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        flexShrink: 0,
+                        letterSpacing: '0.5px'
+                      }}>BYE</span>
+                      <input
+                        value={team.customDisplayName || ''}
+                        disabled={!canEdit}
+                        placeholder="add label (optional)…"
+                        onChange={e => updateByeCustomName(activeEvent, idx, e.target.value)}
+                        style={{ color: 'var(--teal)', fontStyle: 'italic' }}
+                        maxLength={60}
+                      />
+                    </>
+                  ) : (
+                    <input value={team.name} disabled={!canEdit}
+                      onChange={e => updateTeamName(activeEvent, team.id, e.target.value)}
+                    />
+                  )}
                 </div>
               ))}
             </div>
           </div>
           <div className="card draw-section">
             <h3>Main Draw</h3>
-            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onByeCustomName={canEdit ? handleByeCustomNameUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Consolation Draw</h3>
-            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onByeCustomName={canEdit ? handleByeCustomNameUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Waterfall Consolations</h3>
-            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onByeCustomName={canEdit ? handleByeCustomNameUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
         </>
       )}
