@@ -627,30 +627,27 @@ function generateMainDraw() {
   }
   rounds.push(r);
   r = [];
-  // Stagger MD R2 losers across CD R2 by half (offset 4 of 8) so that the
-  // CD R2 opponent paths come from a non-overlapping MD R1 cluster — this
-  // prevents the common BYE-driven rematch where a CD R1 BYE-winner meets
-  // their original MD R1 opponent again in CD R2.
+  // Natural pairing: M2.j loser feeds CD2.j (slot 2). Rematches that would
+  // result from this layout are broken at runtime by preventRematches() in
+  // populateAllDraws — see that function for details.
   for (let i = 0; i < 8; i++) {
     r.push(makeMatch(`M2.${i+1}`, 2, i+1,
       { type: 'winner', matchId: `M1.${i*2+1}` }, { type: 'winner', matchId: `M1.${i*2+2}` },
-      { customLabel: `MD R2.${i+1}`, loserFeed: `CD2.${((i + 4) % 8) + 1}`, loserSlot: 2, nextBracketType: 'CD' }));
+      { customLabel: `MD R2.${i+1}`, loserFeed: `CD2.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
   }
   rounds.push(r);
   r = [];
-  // Stagger MD QF losers across CD R4 by half (offset 2 of 4) — same idea.
   for (let i = 0; i < 4; i++) {
     r.push(makeMatch(`M3.${i+1}`, 3, i+1,
       { type: 'winner', matchId: `M2.${i*2+1}` }, { type: 'winner', matchId: `M2.${i*2+2}` },
-      { customLabel: `MD QF.${i+1}`, loserFeed: `CD4.${((i + 2) % 4) + 1}`, loserSlot: 2, nextBracketType: 'CD' }));
+      { customLabel: `MD QF.${i+1}`, loserFeed: `CD4.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
   }
   rounds.push(r);
   r = [];
-  // Stagger MD SF losers across CD R6 by half (offset 1 of 2).
   for (let i = 0; i < 2; i++) {
     r.push(makeMatch(`M4.${i+1}`, 4, i+1,
       { type: 'winner', matchId: `M3.${i*2+1}` }, { type: 'winner', matchId: `M3.${i*2+2}` },
-      { customLabel: `MD SF.${i+1}`, isSF: true, loserFeed: `CD6.${((i + 1) % 2) + 1}`, loserSlot: 2, nextBracketType: 'CD' }));
+      { customLabel: `MD SF.${i+1}`, isSF: true, loserFeed: `CD6.${i+1}`, loserSlot: 2, nextBracketType: 'CD' }));
   }
   rounds.push(r);
   r = [makeMatch('M5.1', 5, 1,
@@ -670,12 +667,9 @@ function generateConsolationDraw() {
   }
   rounds.push(r);
   r = [];
-  // CD R2 pulls its MD R2 losers staggered by half (matches the offset in
-  // generateMainDraw) so the loser arrives in a CD slot whose path comes
-  // from a different MD R1 cluster — avoids rematches.
   for (let i = 0; i < 8; i++) {
     r.push(makeMatch(`CD2.${i+1}`, 2, i+1,
-      { type: 'winner', matchId: `CD1.${i+1}` }, { type: 'loser', matchId: `M2.${((i + 4) % 8) + 1}` },
+      { type: 'winner', matchId: `CD1.${i+1}` }, { type: 'loser', matchId: `M2.${i+1}` },
       { customLabel: `CD R2.${i+1}` }));
   }
   rounds.push(r);
@@ -687,10 +681,9 @@ function generateConsolationDraw() {
   }
   rounds.push(r);
   r = [];
-  // CD R4 pulls its MD QF losers staggered by half — same reasoning.
   for (let i = 0; i < 4; i++) {
     r.push(makeMatch(`CD4.${i+1}`, 4, i+1,
-      { type: 'winner', matchId: `CD3.${i+1}` }, { type: 'loser', matchId: `M3.${((i + 2) % 4) + 1}` },
+      { type: 'winner', matchId: `CD3.${i+1}` }, { type: 'loser', matchId: `M3.${i+1}` },
       { customLabel: `CD R4.${i+1} (vs QF Losing Teams)` }));
   }
   rounds.push(r);
@@ -702,10 +695,9 @@ function generateConsolationDraw() {
   }
   rounds.push(r);
   r = [];
-  // CD R6 pulls its MD SF losers staggered by half — same reasoning.
   for (let i = 0; i < 2; i++) {
     r.push(makeMatch(`CD6.${i+1}`, 6, i+1,
-      { type: 'winner', matchId: `CD5.${i+1}` }, { type: 'loser', matchId: `M4.${((i + 1) % 2) + 1}` },
+      { type: 'winner', matchId: `CD5.${i+1}` }, { type: 'loser', matchId: `M4.${i+1}` },
       { customLabel: `CD SF.${i+1}` }));
   }
   rounds.push(r);
@@ -1100,6 +1092,69 @@ function populateWaterfallDynamic(eventData) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   DYNAMIC REMATCH BREAKER
+   Default routing follows natural pairings (M2.j -> CD2.j etc.) so users
+   see teams in the slots they expect. After population, this pass scans
+   not-yet-played CD/WCD matches for rematches against MD or earlier CD
+   results. When a rematch is detected, it swaps team1 with another match
+   in the same round whose post-swap pairing wouldn't itself be a rematch.
+   The swap moves both team1Source pointers AND team1Id values so the
+   change persists through subsequent populateDraw passes.
+   ═══════════════════════════════════════════════════════════ */
+function preventRematches(eventData) {
+  const md = eventData.mainDraw;
+  const cd = eventData.consolationDraw;
+  const wcd = eventData.waterfallConsolationDraw;
+  if (!md || !md.rounds || !cd || !cd.rounds) return;
+  const pairKey = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
+  const seen = new Set();
+  const collect = (draw) => {
+    if (!draw || !draw.rounds) return;
+    for (const r of draw.rounds) for (const m of r) {
+      if (m.isComplete && !m.isBye && m.team1Id && m.team2Id && m.team1Id !== 'BYE' && m.team2Id !== 'BYE') {
+        seen.add(pairKey(m.team1Id, m.team2Id));
+      }
+    }
+  };
+  collect(md);
+  collect(cd);
+  collect(wcd);
+
+  const tryBreakRound = (round) => {
+    const fixed = new Set();
+    for (let i = 0; i < round.length; i++) {
+      if (fixed.has(i)) continue;
+      const m = round[i];
+      if (m.isComplete) continue;
+      if (!m.team1Id || !m.team2Id) continue;
+      if (m.team1Id === 'BYE' || m.team2Id === 'BYE') continue;
+      if (!seen.has(pairKey(m.team1Id, m.team2Id))) continue;
+      // Rematch — find a swap partner in the same round.
+      for (let j = 0; j < round.length; j++) {
+        if (i === j || fixed.has(j)) continue;
+        const m2 = round[j];
+        if (m2.isComplete) continue;
+        if (!m2.team1Id || !m2.team2Id) continue;
+        if (m2.team1Id === 'BYE' || m2.team2Id === 'BYE') continue;
+        const newK1 = pairKey(m2.team1Id, m.team2Id);
+        const newK2 = pairKey(m.team1Id, m2.team2Id);
+        if (seen.has(newK1) || seen.has(newK2)) continue;
+        // Swap team1Source pointers AND team1Id so the change persists.
+        const tmpSrc = m.team1Source; m.team1Source = m2.team1Source; m2.team1Source = tmpSrc;
+        const tmpId = m.team1Id; m.team1Id = m2.team1Id; m2.team1Id = tmpId;
+        fixed.add(i); fixed.add(j);
+        break;
+      }
+    }
+  };
+
+  // Skip CD R1 — it represents the entry point from MD R1 losers; rematches
+  // there would only exist if MD already paired the same teams (impossible).
+  for (let ri = 1; ri < cd.rounds.length; ri++) tryBreakRound(cd.rounds[ri]);
+  if (wcd && wcd.rounds) for (const r of wcd.rounds) tryBreakRound(r);
+}
+
 function populateAllDraws(eventData) {
   for (let i = 0; i < 10; i++) {
     const snap = JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]);
@@ -1108,6 +1163,7 @@ function populateAllDraws(eventData) {
     redistributeConsolationR1(eventData);
     populateWaterfallDynamic(eventData);
     populateDraw(eventData, eventData.waterfallConsolationDraw);
+    preventRematches(eventData);
     if (JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]) === snap) break;
   }
 }
@@ -1272,14 +1328,22 @@ function parseTeamsCSV(csvText) {
   const hasCustomName = 'CustomDisplayName' in map;
   const updates = [];
   for (let i = 1; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
+    const line = lines[i];
+    if (!line.trim()) continue;
     const data = []; let cur = '', inQ = false;
-    for (const ch of lines[i]) {
-      if (ch === '"') inQ = !inQ;
-      else if (ch === ',' && !inQ) { data.push(cur.trim().replace(/^"|"$/g, '')); cur = ''; }
-      else cur += ch;
+    for (let k = 0; k < line.length; k++) {
+      const ch = line[k];
+      if (ch === '"') {
+        // CSV escape: doubled quote inside a quoted field = literal quote.
+        if (inQ && line[k+1] === '"') { cur += '"'; k++; continue; }
+        inQ = !inQ;
+      } else if (ch === ',' && !inQ) {
+        data.push(cur.trim()); cur = '';
+      } else {
+        cur += ch;
+      }
     }
-    data.push(cur.trim().replace(/^"|"$/g, ''));
+    data.push(cur.trim());
     updates.push({
       eventCode: data[map.EventCode],
       teamId: data[map.TeamID],
