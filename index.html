@@ -903,13 +903,18 @@ function redistributeConsolationR1(eventData) {
 
 /* ═══════════════════════════════════════════════════════════
    WATERFALL CONSOLATION — DETERMINISTIC POPULATION
-   ═══════════════════════════════════════════════════════════
-   Eligibility: teams that lost their FIRST Main Draw match
-   (MD R1) AND then lost their FIRST Consolation match (CD R1).
-
-   BYEs are only placed once every CD R1 match is resolved, so
-   that all possible WCD entrants have been determined first.
-
+   Eligibility:
+     A team enters WCD only if they lost their FIRST main-draw match
+     AND their FIRST consolation match. Operationally, a team has
+     "lost their first match" in a draw when they have no non-BYE
+     wins in that draw. So a team qualifies when:
+       - no non-BYE wins in MD, AND
+       - no non-BYE wins in CD, AND
+       - has a real loss in CD.
+   BYEs:
+     BYEs only fill empty WCD R1 slots once no more potentially
+     eligible teams remain (i.e., every team has either entered or
+     disqualified themselves by winning a CD/MD match).
    Placement is deterministic (sorted by team ID) so all users
    and refreshes see the same draw.
    ═══════════════════════════════════════════════════════════ */
@@ -923,115 +928,106 @@ function populateWaterfallDynamic(eventData) {
   // Don't touch if any non-BYE WCD R1 match has been played
   if (wcdR1.some(m => m.isComplete && !m.isBye)) return;
 
-  // Reset ALL WCD rounds for full recalculation
-  for (let ri = 0; ri < wcd.rounds.length; ri++) {
-    wcd.rounds[ri].forEach(m => {
-      m.team1Id = null;
-      m.team2Id = null;
-      m.winnerId = null;
-      m.loserId = null;
-      m.isComplete = false;
-      m.isBye = false;
-      m.score1 = [];
-      m.score2 = [];
-    });
-  }
-
-  // ── Source: Consolation Draw Round 1 ──
-  // CD R1 contains the matchups between MD R1 losers.
-  // The loser of each CD R1 match is a team that:
-  //   1. Lost their first main draw match (MD R1)  → entered CD
-  //   2. Lost their first consolation match (CD R1) → eligible for WCD
+  const md = eventData.mainDraw;
   const cd = eventData.consolationDraw;
-  if (!cd || !cd.rounds || !cd.rounds[0]) return;
-  const cdR1 = cd.rounds[0];
+  if (!md || !md.rounds || !cd || !cd.rounds) return;
 
+  const hasRealWin = (draw, tid) => {
+    for (const round of draw.rounds) {
+      for (const m of round) {
+        if (m.isComplete && !m.isBye && m.winnerId === tid) return true;
+      }
+    }
+    return false;
+  };
+  const hasRealLoss = (draw, tid) => {
+    for (const round of draw.rounds) {
+      for (const m of round) {
+        if (m.isComplete && m.loserId === tid) return true;
+      }
+    }
+    return false;
+  };
+
+  // Classify every real team: eligible now, disqualified, or potentially eligible
   const eligibleTeams = [];
-  let pendingCDR1Matches = 0;
+  let potentialFuture = 0;
+  for (const team of eventData.teams) {
+    if (!team || !team.id || team.id === 'BYE') continue;
+    const tid = team.id;
+    if (hasRealWin(md, tid) || hasRealWin(cd, tid)) continue; // disqualified — won a real match
+    if (hasRealLoss(cd, tid)) eligibleTeams.push(tid);
+    else potentialFuture++; // could still become eligible (or disqualified) later
+  }
+  const eligibleSet = new Set(eligibleTeams);
 
-  for (const match of cdR1) {
-    if (match.isComplete) {
-      // BYE-completed matches have no real loser for WCD
-      if (match.isBye) continue;
-      const loserId = match.loserId;
-      if (loserId && loserId !== 'BYE') {
-        eligibleTeams.push(loserId);
-      }
-    } else {
-      // Not complete — could this match still produce a WCD entrant?
-      const t1 = match.team1Id;
-      const t2 = match.team2Id;
-      const t1Real = t1 && t1 !== 'BYE';
-      const t2Real = t2 && t2 !== 'BYE';
+  /* Stability: a team that is currently placed in WCD R1 and is still
+     eligible keeps its slot. Only BYE/null/no-longer-eligible slots are
+     cleared and refilled. This means a new arriving entrant always lands
+     in the next open slot rather than reshuffling existing pairings. */
+  let anyChanged = false;
+  wcdR1.forEach(m => {
+    let cleared = false;
+    const clearSlot1 = m.team1Id === 'BYE' || m.team1Id === 'TBD' ||
+      (m.team1Id && !eligibleSet.has(m.team1Id));
+    const clearSlot2 = m.team2Id === 'BYE' || m.team2Id === 'TBD' ||
+      (m.team2Id && !eligibleSet.has(m.team2Id));
+    if (clearSlot1) { m.team1Id = null; cleared = true; }
+    if (clearSlot2) { m.team2Id = null; cleared = true; }
+    if (cleared || m.isBye) {
+      m.score1 = []; m.score2 = [];
+      m.winnerId = null; m.loserId = null;
+      m.isComplete = false; m.isBye = false;
+      anyChanged = true;
+    }
+  });
 
-      if (t1Real && t2Real) {
-        // Two real teams waiting to play → will produce one WCD entrant
-        pendingCDR1Matches++;
-      } else if (!t1 || !t2) {
-        // Still waiting for MD R1 loser(s) to arrive → might produce entrant
-        pendingCDR1Matches++;
-      }
-      // One real vs BYE: populateDraw should auto-complete this as a BYE win,
-      //   so the real team advances and there's no WCD entrant.
-      // BYE vs BYE: no entrant possible, already handled or will auto-complete.
+  // Track which eligibles already have a seat
+  const placed = new Set();
+  wcdR1.forEach(m => {
+    if (m.team1Id) placed.add(m.team1Id);
+    if (m.team2Id) placed.add(m.team2Id);
+  });
+
+  // New eligibles to seat, in deterministic ID order
+  const toPlace = eligibleTeams.filter(t => !placed.has(t)).sort();
+
+  // Find empty slots in pair-sequential order so new teams pair up before spreading
+  const emptySlots = [];
+  for (let mi = 0; mi < numMatches; mi++) {
+    if (!wcdR1[mi].team1Id) emptySlots.push({ mi, slot: 1 });
+    if (!wcdR1[mi].team2Id) emptySlots.push({ mi, slot: 2 });
+  }
+
+  let ti = 0;
+  for (const e of emptySlots) {
+    if (ti >= toPlace.length) break;
+    if (e.slot === 1) wcdR1[e.mi].team1Id = toPlace[ti++];
+    else wcdR1[e.mi].team2Id = toPlace[ti++];
+    anyChanged = true;
+  }
+
+  // Fill any remaining empties with BYEs only when no future eligibles can arrive
+  if (potentialFuture === 0) {
+    for (const e of emptySlots) {
+      const m = wcdR1[e.mi];
+      if (e.slot === 1 && !m.team1Id) { m.team1Id = 'BYE'; anyChanged = true; }
+      if (e.slot === 2 && !m.team2Id) { m.team2Id = 'BYE'; anyChanged = true; }
     }
   }
 
-  // Sort eligible teams deterministically by ID
-  eligibleTeams.sort();
-
-  // ── BYE filling policy ──
-  // BYEs may NOT enter WCD until all possible entrants have been determined.
-  // This means every CD R1 match must be resolved (complete or impossible to
-  // produce an entrant) before we pad with BYEs.
-  const canFillByes = pendingCDR1Matches === 0;
-
-  // Build the entry list
-  const entries = [...eligibleTeams];
-  if (canFillByes) {
-    while (entries.length < totalSlots) {
-      entries.push('BYE');
-    }
-  }
-
-  // Nothing to place yet
-  if (entries.length === 0) return;
-
-  // ── Deterministic placement ──
-  // Distribute real teams so that each match gets at most one BYE opponent
-  // where possible (avoids BYE-vs-BYE unless there are very few real teams).
-  const realTeams = entries.filter(e => e !== 'BYE');
-
-  if (canFillByes) {
-    // All entrants known — do full placement with BYE padding
-    if (realTeams.length >= numMatches) {
-      // Each match gets at least one real team
-      let ri = 0;
-      for (let mi = 0; mi < numMatches; mi++) {
-        wcdR1[mi].team1Id = realTeams[ri++];
-      }
-      for (let mi = 0; mi < numMatches; mi++) {
-        wcdR1[mi].team2Id = (ri < realTeams.length) ? realTeams[ri++] : 'BYE';
-      }
-    } else {
-      // Fewer real teams than matches
-      for (let mi = 0; mi < numMatches; mi++) {
-        if (mi < realTeams.length) {
-          wcdR1[mi].team1Id = realTeams[mi];
-          wcdR1[mi].team2Id = 'BYE';
-        } else {
-          wcdR1[mi].team1Id = 'BYE';
-          wcdR1[mi].team2Id = 'BYE';
+  // If R1 changed, reset BYE-completed and pending later rounds so they re-resolve
+  if (anyChanged) {
+    for (let ri = 1; ri < wcd.rounds.length; ri++) {
+      wcd.rounds[ri].forEach(m => {
+        if (m.isBye) {
+          m.team1Id = null; m.team2Id = null;
+          m.winnerId = null; m.loserId = null;
+          m.isComplete = false; m.isBye = false;
+        } else if (!m.isComplete) {
+          m.team1Id = null; m.team2Id = null;
         }
-      }
-    }
-  } else {
-    // Not all CD R1 resolved — partial fill without BYEs.
-    // Pair up available real teams; leave remaining match slots empty (null).
-    let ri = 0;
-    for (let mi = 0; mi < numMatches && ri < realTeams.length; mi++) {
-      wcdR1[mi].team1Id = realTeams[ri++];
-      wcdR1[mi].team2Id = (ri < realTeams.length) ? realTeams[ri++] : null;
+      });
     }
   }
 }
