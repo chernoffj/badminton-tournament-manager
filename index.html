@@ -889,16 +889,10 @@ function redistributeConsolationR1(eventData) {
   const cdR1 = cd.rounds[0];
   // Don't redistribute if any non-BYE match has been played
   if (cdR1.some(m => m.isComplete && !m.isBye)) return;
-  // Reset BYE completions so we can re-evaluate
-  cdR1.forEach(m => {
-    if (m.isBye) {
-      m.isComplete = false;
-      m.isBye = false;
-      m.winnerId = null;
-      m.loserId = null;
-    }
-  });
-  // Collect all current team assignments
+  // Collect current team assignments. Don't reset BYE completions yet —
+  // we need to compare current state to the target so we can no-op when
+  // already redistributed (otherwise populateAllDraws would oscillate
+  // between this reset and populateDraw's BYE auto-completion).
   const allTeams = [];
   cdR1.forEach(m => {
     allTeams.push(m.team1Id || null);
@@ -914,36 +908,54 @@ function redistributeConsolationR1(eventData) {
   if (!hasByeVsBye) return;
   // Separate real teams and count BYEs
   const realTeams = allTeams.filter(t => t !== 'BYE').sort(); // deterministic sort by ID
-  const byeCount = allTeams.filter(t => t === 'BYE').length;
   if (realTeams.length === 0) return;
   const numMatches = cdR1.length;
 
+  // Compute the target layout deterministically.
+  const target = [];
   if (realTeams.length >= numMatches) {
-    // Enough real teams so each match gets at least one real team
-    // Fill team1 of each match first (all real), then team2 (real or BYE)
+    // Each match gets at least one real team in slot1; spillover real teams
+    // fill slot2; remaining slot2s become BYE.
     let ri = 0;
+    for (let mi = 0; mi < numMatches; mi++) target.push([realTeams[ri++], null]);
     for (let mi = 0; mi < numMatches; mi++) {
-      cdR1[mi].team1Id = realTeams[ri++];
-    }
-    for (let mi = 0; mi < numMatches; mi++) {
-      if (ri < realTeams.length) {
-        cdR1[mi].team2Id = realTeams[ri++];
-      } else {
-        cdR1[mi].team2Id = 'BYE';
-      }
+      target[mi][1] = ri < realTeams.length ? realTeams[ri++] : 'BYE';
     }
   } else {
-    // Fewer real teams than matches — some matches will be BYE vs BYE
+    // Fewer real teams than matches — first realTeams matches are real-vs-BYE,
+    // remaining matches are BYE-vs-BYE.
     for (let mi = 0; mi < numMatches; mi++) {
-      if (mi < realTeams.length) {
-        cdR1[mi].team1Id = realTeams[mi];
-        cdR1[mi].team2Id = 'BYE';
-      } else {
-        cdR1[mi].team1Id = 'BYE';
-        cdR1[mi].team2Id = 'BYE';
-      }
+      if (mi < realTeams.length) target.push([realTeams[mi], 'BYE']);
+      else target.push(['BYE', 'BYE']);
     }
   }
+
+  // If layout already matches the target, do nothing — preserves any BYE
+  // auto-completions populateDraw produced.
+  let alreadyTarget = true;
+  for (let mi = 0; mi < numMatches; mi++) {
+    if (cdR1[mi].team1Id !== target[mi][0] || cdR1[mi].team2Id !== target[mi][1]) {
+      alreadyTarget = false;
+      break;
+    }
+  }
+  if (alreadyTarget) return;
+
+  // Layout differs — apply target. Reset existing BYE completions first
+  // since their team1Id/team2Id are about to change.
+  cdR1.forEach(m => {
+    if (m.isBye) {
+      m.isComplete = false;
+      m.isBye = false;
+      m.winnerId = null;
+      m.loserId = null;
+    }
+  });
+  for (let mi = 0; mi < numMatches; mi++) {
+    cdR1[mi].team1Id = target[mi][0];
+    cdR1[mi].team2Id = target[mi][1];
+  }
+
   // After CD R1 reshuffle: clear stale propagated values from later rounds
   // so populateDraw can fill them correctly from the new R1 arrangement.
   for (let ri = 1; ri < cd.rounds.length; ri++) {
