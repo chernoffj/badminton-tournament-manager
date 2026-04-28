@@ -604,6 +604,7 @@ function makeMatch(id, round, matchInRound, team1Source, team2Source, opts = {})
     team1Id: null, team2Id: null,
     team1Source: team1Source || null,
     team2Source: team2Source || null,
+    team1Label: '', team2Label: '',
     score1: [], score2: [],
     winnerId: null, loserId: null,
     isBye: false, isComplete: false,
@@ -2078,18 +2079,19 @@ function CustomNameEditor({ teamId, currentCustomName, onSave }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Inline BYE Label Editor — per-BYE-slot in match card
-   Mirrors CustomNameEditor but writes by team-array slot index
-   since all BYEs share id 'BYE'.
+   Inline Slot Label Editor — per-match-card label for any
+   BYE or TBD slot. Writes onto the match itself
+   (match.team1Label / match.team2Label) so the label stays on
+   that specific match card and does not propagate.
    ═══════════════════════════════════════════════════════════ */
-function ByeNameEditor({ slotIndex, currentCustomName, onSave }) {
+function SlotLabelEditor({ matchId, drawType, slotNum, currentLabel, isTbd, onSave }) {
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(currentCustomName || '');
+  const [value, setValue] = useState(currentLabel || '');
   const inputRef = useRef(null);
 
   useEffect(() => {
-    setValue(currentCustomName || '');
-  }, [currentCustomName]);
+    setValue(currentLabel || '');
+  }, [currentLabel]);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -2099,12 +2101,12 @@ function ByeNameEditor({ slotIndex, currentCustomName, onSave }) {
   }, [editing]);
 
   const handleSave = () => {
-    onSave(slotIndex, value.trim());
+    onSave(matchId, drawType, slotNum, value.trim());
     setEditing(false);
   };
 
   const handleCancel = () => {
-    setValue(currentCustomName || '');
+    setValue(currentLabel || '');
     setEditing(false);
   };
 
@@ -2113,7 +2115,10 @@ function ByeNameEditor({ slotIndex, currentCustomName, onSave }) {
     if (e.key === 'Escape') handleCancel();
   };
 
-  if (slotIndex === null || slotIndex === undefined) return null;
+  const placeholder = isTbd ? 'TBD label...' : 'BYE label...';
+  const editTitle = isTbd
+    ? (currentLabel ? 'Edit TBD label' : 'Add TBD label')
+    : (currentLabel ? 'Edit BYE label' : 'Add BYE label');
 
   if (editing) {
     return (
@@ -2121,7 +2126,7 @@ function ByeNameEditor({ slotIndex, currentCustomName, onSave }) {
         <input
           ref={inputRef}
           type="text"
-          placeholder="BYE label..."
+          placeholder={placeholder}
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -2135,48 +2140,51 @@ function ByeNameEditor({ slotIndex, currentCustomName, onSave }) {
 
   return (
     <div className="custom-name-row">
-      {currentCustomName ? (
-        <span className="custom-name-tag">{currentCustomName}</span>
-      ) : null}
       <button
         className="custom-name-edit-btn"
         onClick={e => { e.stopPropagation(); setEditing(true); }}
-        title={currentCustomName ? 'Edit BYE label' : 'Add BYE label'}
+        title={editTitle}
       >
-        {currentCustomName ? '✎' : '+ label'}
+        {currentLabel ? '✎' : '+ label'}
       </button>
     </div>
   );
 }
 
-function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onByeCustomName, onToggleMarshal, matchNumber, highlightedMatchId }) {
+function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, matchNumber, highlightedMatchId }) {
   const getTeamObj = (teamId) => {
     if (!teamId || teamId === 'BYE') return null;
     return eventData.teams.find(x => x.id === teamId) || null;
   };
 
-  const getDisplayName = (teamId) => {
-    if (!teamId) return 'TBD';
-    if (teamId === 'BYE') return 'BYE';
-    const t = getTeamObj(teamId);
-    return t ? t.name : teamId;
-  };
-
-  const getByeSlot = (teamId, source) => {
-    if (teamId !== 'BYE') return null;
-    if (source && source.type === 'seed' && Number.isInteger(source.slot)) return source.slot;
-    return null;
-  };
-
-  const getCustomName = (teamId, source) => {
-    if (teamId === 'BYE') {
-      const slot = getByeSlot(teamId, source);
-      if (slot === null) return '';
-      const t = eventData.teams[slot];
-      return t ? (t.customDisplayName || '') : '';
+  // Resolve what to display for one slot. Returns { name, label, teamCustomName }
+  // - name: the primary label ('BYE', 'TBD', or the team's name).
+  // - label: the leading badge text — match-level label first, then a fallback
+  //   to the seed BYE team's customDisplayName so existing seeded labels still
+  //   show, then the real team's customDisplayName for non-BYE slots.
+  // - teamCustomName: the real team's customDisplayName (used by CustomNameEditor).
+  const computeSlotDisplay = (teamId, source, matchLabel) => {
+    if (teamId && teamId !== 'BYE') {
+      const t = getTeamObj(teamId);
+      const teamCustomName = t ? (t.customDisplayName || '') : '';
+      return { name: t ? t.name : teamId, label: teamCustomName, teamCustomName };
     }
-    const t = getTeamObj(teamId);
-    return t ? (t.customDisplayName || '') : '';
+    if (teamId === 'BYE') {
+      let fallback = '';
+      if (source && source.type === 'seed' && Number.isInteger(source.slot)) {
+        const t = eventData.teams[source.slot];
+        if (t && t.customDisplayName) fallback = t.customDisplayName;
+      }
+      return { name: 'BYE', label: matchLabel || fallback, teamCustomName: '' };
+    }
+    return { name: 'TBD', label: matchLabel || '', teamCustomName: '' };
+  };
+
+  const getWinnerDisplay = (winnerId) => {
+    if (!winnerId) return 'TBD';
+    if (winnerId === 'BYE') return 'BYE';
+    const t = getTeamObj(winnerId);
+    return t ? t.name : winnerId;
   };
 
   const bo3 = isBo3(match, drawType);
@@ -2206,10 +2214,10 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
   const isHighlighted = highlightedMatchId === match.id;
   const downstreamCount = canEdit ? countDownstreamPlayed(eventData, match.id) : 0;
 
-  const t1Custom = getCustomName(match.team1Id, match.team1Source);
-  const t2Custom = getCustomName(match.team2Id, match.team2Source);
-  const t1ByeSlot = getByeSlot(match.team1Id, match.team1Source);
-  const t2ByeSlot = getByeSlot(match.team2Id, match.team2Source);
+  const t1Display = computeSlotDisplay(match.team1Id, match.team1Source, match.team1Label);
+  const t2Display = computeSlotDisplay(match.team2Id, match.team2Source, match.team2Label);
+  const t1IsLabelable = match.team1Id === 'BYE' || !match.team1Id;
+  const t2IsLabelable = match.team2Id === 'BYE' || !match.team2Id;
 
   return (
     <div
@@ -2235,20 +2243,23 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
       <div className={`match-team ${t1cls}`}>
         <div className="match-team-name-block">
           <div className="match-team-name">
-            {t1Custom ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t1Custom}</span> {getDisplayName(match.team1Id)}</> : getDisplayName(match.team1Id)}
+            {t1Display.label ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t1Display.label}</span> {t1Display.name}</> : t1Display.name}
           </div>
           {!readOnly && onCustomName && match.team1Id && match.team1Id !== 'BYE' && (
             <CustomNameEditor
               teamId={match.team1Id}
-              currentCustomName={t1Custom}
+              currentCustomName={t1Display.teamCustomName}
               onSave={onCustomName}
             />
           )}
-          {!readOnly && onByeCustomName && t1ByeSlot !== null && (
-            <ByeNameEditor
-              slotIndex={t1ByeSlot}
-              currentCustomName={t1Custom}
-              onSave={onByeCustomName}
+          {!readOnly && onSlotLabel && t1IsLabelable && (
+            <SlotLabelEditor
+              matchId={match.id}
+              drawType={drawType}
+              slotNum={1}
+              currentLabel={match.team1Label || ''}
+              isTbd={!match.team1Id}
+              onSave={onSlotLabel}
             />
           )}
         </div>
@@ -2262,20 +2273,23 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
       <div className={`match-team ${t2cls}`}>
         <div className="match-team-name-block">
           <div className="match-team-name">
-            {t2Custom ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t2Custom}</span> {getDisplayName(match.team2Id)}</> : getDisplayName(match.team2Id)}
+            {t2Display.label ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t2Display.label}</span> {t2Display.name}</> : t2Display.name}
           </div>
           {!readOnly && onCustomName && match.team2Id && match.team2Id !== 'BYE' && (
             <CustomNameEditor
               teamId={match.team2Id}
-              currentCustomName={t2Custom}
+              currentCustomName={t2Display.teamCustomName}
               onSave={onCustomName}
             />
           )}
-          {!readOnly && onByeCustomName && t2ByeSlot !== null && (
-            <ByeNameEditor
-              slotIndex={t2ByeSlot}
-              currentCustomName={t2Custom}
-              onSave={onByeCustomName}
+          {!readOnly && onSlotLabel && t2IsLabelable && (
+            <SlotLabelEditor
+              matchId={match.id}
+              drawType={drawType}
+              slotNum={2}
+              currentLabel={match.team2Label || ''}
+              isTbd={!match.team2Id}
+              onSave={onSlotLabel}
             />
           )}
         </div>
@@ -2295,13 +2309,13 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
           )}
         </>
       )}
-      {match.isBye && <div className="match-bye-text">{getDisplayName(match.winnerId)} advances (BYE)</div>}
-      {match.isComplete && !match.isBye && <div className="match-winner-text">✓ Winning Team: {getDisplayName(match.winnerId)}</div>}
+      {match.isBye && <div className="match-bye-text">{getWinnerDisplay(match.winnerId)} advances (BYE)</div>}
+      {match.isComplete && !match.isBye && <div className="match-winner-text">✓ Winning Team: {getWinnerDisplay(match.winnerId)}</div>}
     </div>
   );
 }
 
-function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onByeCustomName, onToggleMarshal, matchNumberMap, highlightedMatchId }) {
+function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, matchNumberMap, highlightedMatchId }) {
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
     MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final'],
@@ -2325,7 +2339,7 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onC
               onSave={onSave}
               onEdit={onEdit}
               onCustomName={onCustomName}
-              onByeCustomName={onByeCustomName}
+              onSlotLabel={onSlotLabel}
               onToggleMarshal={onToggleMarshal}
               matchNumber={matchNumberMap ? matchNumberMap[m.id] : null}
               highlightedMatchId={highlightedMatchId}
@@ -2455,14 +2469,16 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     await saveEvent(activeEvent, ev);
   }, [canEdit, events, activeEvent, tournamentId]);
 
-  /* ═══════ BYE Label handler — writes by team-array slot index since
-     all BYE teams share id 'BYE'. ═══════ */
-  const handleByeCustomNameUpdate = useCallback(async (slotIndex, customName) => {
+  /* ═══════ Slot Label handler — per-match-card label for any
+     BYE or TBD slot. Writes onto the match itself so the label
+     stays on this match card and does not propagate. ═══════ */
+  const handleSlotLabelUpdate = useCallback(async (matchId, drawType, slotNum, label) => {
     if (!canEdit) return;
     const ev = JSON.parse(JSON.stringify(events[activeEvent]));
-    const team = ev.teams[slotIndex];
-    if (!team || team.id !== 'BYE') return;
-    team.customDisplayName = customName;
+    const match = findMatch(ev, drawType, matchId);
+    if (!match) return;
+    if (slotNum === 1) match.team1Label = label;
+    else if (slotNum === 2) match.team2Label = label;
     const newEvents = { ...events, [activeEvent]: ev };
     setEvents(newEvents);
     await saveEvent(activeEvent, ev);
@@ -2739,15 +2755,15 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           </div>
           <div className="card draw-section">
             <h3>Main Draw</h3>
-            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onByeCustomName={canEdit ? handleByeCustomNameUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Consolation Draw</h3>
-            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onByeCustomName={canEdit ? handleByeCustomNameUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Waterfall Consolations</h3>
-            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onByeCustomName={canEdit ? handleByeCustomNameUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
         </>
       )}
