@@ -110,10 +110,12 @@ input, button, select, textarea { font-family: inherit; }
 .team-row input:focus { outline: none; }
 .draw-section { margin-top: 16px; }
 .draw-section h3 { font-size: 1rem; font-weight: 600; color: var(--accent); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-.draw-container { display: flex; overflow-x: auto; padding: 12px 4px 12px 0; gap: 4px; min-height: 300px; }
-.round-col { display: flex; flex-direction: column; justify-content: space-around; min-width: 260px; padding: 0 6px; border-right: 1px dashed var(--border); }
+.draw-container { display: flex; overflow-x: auto; padding: 12px 4px 12px 0; gap: 4px; min-height: 300px; align-items: stretch; }
+.round-col { display: grid; grid-template-rows: auto repeat(var(--num-rows, 16), 1fr); min-width: 260px; padding: 0 6px; border-right: 1px dashed var(--border); }
 .round-col:last-child { border-right: none; }
 .round-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); font-family: var(--font-mono); text-align: center; padding: 4px 0 8px; }
+.round-slot { grid-row: span var(--row-span, 1); display: flex; align-items: center; justify-content: center; padding: 2px 0; min-height: 0; }
+.round-slot > .match-card { width: 100%; margin: 0; }
 .match-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin: 6px 0; transition: border-color 0.15s; }
 .match-card:hover { border-color: var(--text-dim); }
 .match-card.complete { border-color: var(--green); border-left: 3px solid var(--green); }
@@ -381,6 +383,62 @@ input, button, select, textarea { font-family: inherit; }
   background: var(--orange);
   color: #fff;
 }
+.match-manual-btn {
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px;
+  background: var(--purple-dim);
+  color: var(--purple);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.match-manual-btn:hover {
+  background: var(--purple);
+  color: #fff;
+}
+.match-manual-tag {
+  font-size: 0.66rem;
+  text-align: center;
+  color: var(--purple);
+  font-family: var(--font-mono);
+  margin-top: 4px;
+  letter-spacing: 0.4px;
+}
+.team-row .team-row-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.team-row-btn {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.team-row-btn.add {
+  background: var(--green-dim);
+  color: var(--green);
+}
+.team-row-btn.add:hover {
+  background: var(--green);
+  color: #fff;
+}
+.team-row-btn.remove {
+  background: var(--red-dim);
+  color: var(--red);
+}
+.team-row-btn.remove:hover {
+  background: var(--red);
+  color: #fff;
+}
 .match-cascade-warning {
   font-size: 0.7rem;
   color: var(--red);
@@ -628,9 +686,9 @@ function generateMainDraw() {
   }
   rounds.push(r);
   r = [];
-  // Natural pairing: M2.j loser feeds CD2.j (slot 2). Rematches that would
-  // result from this layout are broken at runtime by preventRematches() in
-  // populateAllDraws — see that function for details.
+  // Natural pairing: M2.j loser feeds CD2.j (slot 2). Rematches against MD
+  // pairings are accepted (the previous rematch breaker introduced placement
+  // instability and has been removed).
   for (let i = 0; i < 8; i++) {
     r.push(makeMatch(`M2.${i+1}`, 2, i+1,
       { type: 'winner', matchId: `M1.${i*2+1}` }, { type: 'winner', matchId: `M1.${i*2+2}` },
@@ -740,6 +798,7 @@ function createEventObject(eventId) {
   return {
     id: eventId, name: EVENT_CODES[eventId],
     teams: createInitialTeams(eventId),
+    adhocTeams: [],
     mainDraw: generateMainDraw(),
     consolationDraw: generateConsolationDraw(),
     waterfallConsolationDraw: generateWaterfallDraw(),
@@ -809,6 +868,33 @@ function findMatch(eventData, drawType, matchId) {
   return null;
 }
 
+// Look up a team by id across both the seeded teams array and any
+// adhoc teams introduced by Feature 2 (manual populate). Returns null
+// for BYE/null/missing ids so callers can detect "no real team".
+function findTeamById(eventData, id) {
+  if (!id || id === 'BYE' || id === 'TBD') return null;
+  if (eventData.teams) {
+    const t = eventData.teams.find(x => x.id === id);
+    if (t) return t;
+  }
+  if (eventData.adhocTeams) {
+    const t = eventData.adhocTeams.find(x => x.id === id);
+    if (t) return t;
+  }
+  return null;
+}
+
+function whichDrawForMatchId(eventData, matchId) {
+  for (const [key, type] of [['mainDraw','MD'],['consolationDraw','CD'],['waterfallConsolationDraw','WCD']]) {
+    const draw = eventData[key];
+    if (!draw || !draw.rounds) continue;
+    for (const round of draw.rounds) {
+      if (round.find(m => m.id === matchId)) return type;
+    }
+  }
+  return null;
+}
+
 function findMatchAcrossDraws(eventData, matchId) {
   if (matchId.startsWith('M')) return findMatch(eventData, 'MD', matchId);
   if (matchId.startsWith('WCD')) return findMatch(eventData, 'WCD', matchId);
@@ -841,11 +927,15 @@ function populateDraw(eventData, draw) {
   draw.rounds.forEach(round => {
     round.forEach(match => {
       if (match.isComplete && !match.isBye) return;
-      if (!match.team1Id || match.team1Id === 'TBD') {
+      // Manually populated matches (Feature 2) ignore source-based filling
+      // so the editor's custom team names persist. Score/winner propagation
+      // still works normally below.
+      const skipAutoFill = !!match.manualOverride;
+      if (!skipAutoFill && (!match.team1Id || match.team1Id === 'TBD')) {
         const p = getPlayerIdFromSource(eventData, match.team1Source);
         if (p) match.team1Id = p;
       }
-      if (!match.team2Id || match.team2Id === 'TBD') {
+      if (!skipAutoFill && (!match.team2Id || match.team2Id === 'TBD')) {
         const p = getPlayerIdFromSource(eventData, match.team2Source);
         if (p) match.team2Id = p;
       }
@@ -879,100 +969,16 @@ function populateDraw(eventData, draw) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   DETERMINISTIC CONSOLATION R1 REDISTRIBUTION
-   Replaces random shuffling with sorted, deterministic placement
-   so that ordering is identical across refreshes and for all users.
+   CONSOLATION R1 placements are determined entirely by the natural
+   loser-feeds from MD R1 (M1.j loser → CD1.⌈j/2⌉ slot ((j-1)%2+1)).
+   Once an MD R1 match completes, its loser lands in a fixed CD R1
+   slot and never moves. This was previously a redistribution that
+   sorted real teams into earlier matches; that introduced a "moving
+   target" where placements shifted as later matches completed and
+   broke cascade-reset (a real team placed via redistribution could
+   not be traced back to its source MD R1 match). We now rely on the
+   natural feed for stability.
    ═══════════════════════════════════════════════════════════ */
-function redistributeConsolationR1(eventData) {
-  const cd = eventData.consolationDraw;
-  if (!cd || !cd.rounds || !cd.rounds[0]) return;
-  const cdR1 = cd.rounds[0];
-  // Don't redistribute if any non-BYE match has been played
-  if (cdR1.some(m => m.isComplete && !m.isBye)) return;
-  // Collect current team assignments. Don't reset BYE completions yet —
-  // we need to compare current state to the target so we can no-op when
-  // already redistributed (otherwise populateAllDraws would oscillate
-  // between this reset and populateDraw's BYE auto-completion).
-  const allTeams = [];
-  cdR1.forEach(m => {
-    allTeams.push(m.team1Id || null);
-    allTeams.push(m.team2Id || null);
-  });
-  // If any slot is still unresolved, bail out — can't redistribute yet
-  if (allTeams.some(t => !t)) return;
-  // Check if redistribution is needed (BYE vs BYE exists)
-  let hasByeVsBye = false;
-  for (const m of cdR1) {
-    if (m.team1Id === 'BYE' && m.team2Id === 'BYE') { hasByeVsBye = true; break; }
-  }
-  if (!hasByeVsBye) return;
-  // Separate real teams and count BYEs
-  const realTeams = allTeams.filter(t => t !== 'BYE').sort(); // deterministic sort by ID
-  if (realTeams.length === 0) return;
-  const numMatches = cdR1.length;
-
-  // Compute the target layout deterministically.
-  const target = [];
-  if (realTeams.length >= numMatches) {
-    // Each match gets at least one real team in slot1; spillover real teams
-    // fill slot2; remaining slot2s become BYE.
-    let ri = 0;
-    for (let mi = 0; mi < numMatches; mi++) target.push([realTeams[ri++], null]);
-    for (let mi = 0; mi < numMatches; mi++) {
-      target[mi][1] = ri < realTeams.length ? realTeams[ri++] : 'BYE';
-    }
-  } else {
-    // Fewer real teams than matches — first realTeams matches are real-vs-BYE,
-    // remaining matches are BYE-vs-BYE.
-    for (let mi = 0; mi < numMatches; mi++) {
-      if (mi < realTeams.length) target.push([realTeams[mi], 'BYE']);
-      else target.push(['BYE', 'BYE']);
-    }
-  }
-
-  // If layout already matches the target, do nothing — preserves any BYE
-  // auto-completions populateDraw produced.
-  let alreadyTarget = true;
-  for (let mi = 0; mi < numMatches; mi++) {
-    if (cdR1[mi].team1Id !== target[mi][0] || cdR1[mi].team2Id !== target[mi][1]) {
-      alreadyTarget = false;
-      break;
-    }
-  }
-  if (alreadyTarget) return;
-
-  // Layout differs — apply target. Reset existing BYE completions first
-  // since their team1Id/team2Id are about to change.
-  cdR1.forEach(m => {
-    if (m.isBye) {
-      m.isComplete = false;
-      m.isBye = false;
-      m.winnerId = null;
-      m.loserId = null;
-    }
-  });
-  for (let mi = 0; mi < numMatches; mi++) {
-    cdR1[mi].team1Id = target[mi][0];
-    cdR1[mi].team2Id = target[mi][1];
-  }
-
-  // After CD R1 reshuffle: clear stale propagated values from later rounds
-  // so populateDraw can fill them correctly from the new R1 arrangement.
-  for (let ri = 1; ri < cd.rounds.length; ri++) {
-    cd.rounds[ri].forEach(m => {
-      if (m.isBye || !m.isComplete) {
-        m.team1Id = null;
-        m.team2Id = null;
-        m.winnerId = null;
-        m.loserId = null;
-        m.isComplete = false;
-        m.isBye = false;
-        m.score1 = [];
-        m.score2 = [];
-      }
-    });
-  }
-}
 
 /* ═══════════════════════════════════════════════════════════
    WATERFALL CONSOLATION — DETERMINISTIC POPULATION
@@ -998,9 +1004,6 @@ function populateWaterfallDynamic(eventData) {
   const numMatches = wcdR1.length;  // 4
   const totalSlots = numMatches * 2; // 8
 
-  // Don't touch if any non-BYE WCD R1 match has been played
-  if (wcdR1.some(m => m.isComplete && !m.isBye)) return;
-
   const md = eventData.mainDraw;
   const cd = eventData.consolationDraw;
   if (!md || !md.rounds || !cd || !cd.rounds) return;
@@ -1016,37 +1019,59 @@ function populateWaterfallDynamic(eventData) {
   const hasRealLoss = (draw, tid) => {
     for (const round of draw.rounds) {
       for (const m of round) {
-        if (m.isComplete && m.loserId === tid) return true;
+        if (m.isComplete && !m.isBye && m.loserId === tid) return true;
+      }
+    }
+    return false;
+  };
+  // A team is "alive" — could still produce a real CD loss — if they're
+  // sitting in any pending MD or CD match. Once they have no pending
+  // matches and no real CD loss, their fate is sealed (e.g., advanced
+  // through CD via BYEs only); they're no longer potentially eligible.
+  const isAlive = (tid) => {
+    for (const draw of [md, cd]) {
+      for (const round of draw.rounds) {
+        for (const m of round) {
+          if (!m.isComplete && (m.team1Id === tid || m.team2Id === tid)) return true;
+        }
       }
     }
     return false;
   };
 
-  // Classify every real team: eligible now, disqualified, or potentially eligible
+  // Adhoc teams (manually populated in CD/WCD) are exempt from
+  // eligibility checks — they're not in the original 32-slot draw
+  // and shouldn't be cleared as "ineligible".
+  const adhocSet = new Set((eventData.adhocTeams || []).map(t => t.id));
+
   const eligibleTeams = [];
   let potentialFuture = 0;
   for (const team of eventData.teams) {
     if (!team || !team.id || team.id === 'BYE') continue;
     const tid = team.id;
-    if (hasRealWin(md, tid) || hasRealWin(cd, tid)) continue; // disqualified — won a real match
-    if (hasRealLoss(cd, tid)) eligibleTeams.push(tid);
-    else potentialFuture++; // could still become eligible (or disqualified) later
+    if (hasRealWin(md, tid) || hasRealWin(cd, tid)) continue; // disqualified
+    if (hasRealLoss(cd, tid)) {
+      eligibleTeams.push(tid);
+    } else if (isAlive(tid)) {
+      potentialFuture++;
+    }
+    // else: decided but not eligible (e.g., advanced via BYEs); disqualified for WCD purposes
   }
   const eligibleSet = new Set(eligibleTeams);
 
-  /* Stability: a team that is currently placed in WCD R1 and is still
-     eligible keeps its slot. Only BYE/null/no-longer-eligible slots are
-     cleared and refilled. This means a new arriving entrant always lands
-     in the next open slot rather than reshuffling existing pairings. */
+  /* For each WCD R1 match: skip already-played matches entirely (their teams
+     are locked). For pending or BYE-completed matches, clear non-eligible/
+     BYE/TBD slots and refill. Adhoc/manually-placed teams are preserved. */
   let anyChanged = false;
   wcdR1.forEach(m => {
+    if (m.manualOverride) return;       // manually placed — leave alone
+    if (m.isComplete && !m.isBye) return; // played match — locked
     let cleared = false;
-    const clearSlot1 = m.team1Id === 'BYE' || m.team1Id === 'TBD' ||
-      (m.team1Id && !eligibleSet.has(m.team1Id));
-    const clearSlot2 = m.team2Id === 'BYE' || m.team2Id === 'TBD' ||
-      (m.team2Id && !eligibleSet.has(m.team2Id));
-    if (clearSlot1) { m.team1Id = null; cleared = true; }
-    if (clearSlot2) { m.team2Id = null; cleared = true; }
+    const clearable = (tid) =>
+      tid === 'BYE' || tid === 'TBD' ||
+      (tid && !eligibleSet.has(tid) && !adhocSet.has(tid));
+    if (clearable(m.team1Id)) { m.team1Id = null; cleared = true; }
+    if (clearable(m.team2Id)) { m.team2Id = null; cleared = true; }
     if (cleared || m.isBye) {
       m.score1 = []; m.score2 = [];
       m.winnerId = null; m.loserId = null;
@@ -1055,25 +1080,22 @@ function populateWaterfallDynamic(eventData) {
     }
   });
 
-  // Track which eligibles already have a seat
   const placed = new Set();
   wcdR1.forEach(m => {
-    if (m.team1Id) placed.add(m.team1Id);
-    if (m.team2Id) placed.add(m.team2Id);
+    if (m.team1Id && m.team1Id !== 'BYE' && m.team1Id !== 'TBD') placed.add(m.team1Id);
+    if (m.team2Id && m.team2Id !== 'BYE' && m.team2Id !== 'TBD') placed.add(m.team2Id);
   });
 
-  // New eligibles to seat, in deterministic ID order
   const toPlace = eligibleTeams.filter(t => !placed.has(t)).sort();
 
-  // Walk slots in a deterministic-but-shuffled order seeded by event ID so
-  // each arriving entrant lands in a scattered slot rather than always
-  // pairing up with the previous entrant. Already-placed eligibles are
-  // skipped, preserving their seats.
   const slotOrder = wcdSlotOrder(eventData.id || '', totalSlots);
   const slotIdToCoords = (idx) => ({ mi: idx >>> 1, slot: (idx & 1) + 1 });
-  const slotEmpty = (idx) => {
+  const slotAvailable = (idx) => {
     const { mi, slot } = slotIdToCoords(idx);
-    return slot === 1 ? !wcdR1[mi].team1Id : !wcdR1[mi].team2Id;
+    const m = wcdR1[mi];
+    if (m.manualOverride) return false;
+    if (m.isComplete && !m.isBye) return false;
+    return slot === 1 ? !m.team1Id : !m.team2Id;
   };
   const setSlot = (idx, tid) => {
     const { mi, slot } = slotIdToCoords(idx);
@@ -1084,25 +1106,26 @@ function populateWaterfallDynamic(eventData) {
   let ti = 0;
   for (const idx of slotOrder) {
     if (ti >= toPlace.length) break;
-    if (!slotEmpty(idx)) continue;
+    if (!slotAvailable(idx)) continue;
     setSlot(idx, toPlace[ti++]);
     anyChanged = true;
   }
 
-  // Fill any remaining empties with BYEs only when no future eligibles can arrive
+  // Fill remaining empties with BYE once no more potential eligibles can arrive.
+  // This ensures TBDs in WCD eventually resolve to BYEs after CD plays out.
   if (potentialFuture === 0) {
     for (const idx of slotOrder) {
-      if (slotEmpty(idx)) {
+      if (slotAvailable(idx)) {
         setSlot(idx, 'BYE');
         anyChanged = true;
       }
     }
   }
 
-  // If R1 changed, reset BYE-completed and pending later rounds so they re-resolve
   if (anyChanged) {
     for (let ri = 1; ri < wcd.rounds.length; ri++) {
       wcd.rounds[ri].forEach(m => {
+        if (m.manualOverride) return;
         if (m.isBye) {
           m.team1Id = null; m.team2Id = null;
           m.winnerId = null; m.loserId = null;
@@ -1115,78 +1138,19 @@ function populateWaterfallDynamic(eventData) {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   DYNAMIC REMATCH BREAKER
-   Default routing follows natural pairings (M2.j -> CD2.j etc.) so users
-   see teams in the slots they expect. After population, this pass scans
-   not-yet-played CD/WCD matches for rematches against MD or earlier CD
-   results. When a rematch is detected, it swaps team1 with another match
-   in the same round whose post-swap pairing wouldn't itself be a rematch.
-   The swap moves both team1Source pointers AND team1Id values so the
-   change persists through subsequent populateDraw passes.
-   ═══════════════════════════════════════════════════════════ */
-function preventRematches(eventData) {
-  const md = eventData.mainDraw;
-  const cd = eventData.consolationDraw;
-  const wcd = eventData.waterfallConsolationDraw;
-  if (!md || !md.rounds || !cd || !cd.rounds) return;
-  const pairKey = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
-  const seen = new Set();
-  const collect = (draw) => {
-    if (!draw || !draw.rounds) return;
-    for (const r of draw.rounds) for (const m of r) {
-      if (m.isComplete && !m.isBye && m.team1Id && m.team2Id && m.team1Id !== 'BYE' && m.team2Id !== 'BYE') {
-        seen.add(pairKey(m.team1Id, m.team2Id));
-      }
-    }
-  };
-  collect(md);
-  collect(cd);
-  collect(wcd);
-
-  const tryBreakRound = (round) => {
-    const fixed = new Set();
-    for (let i = 0; i < round.length; i++) {
-      if (fixed.has(i)) continue;
-      const m = round[i];
-      if (m.isComplete) continue;
-      if (!m.team1Id || !m.team2Id) continue;
-      if (m.team1Id === 'BYE' || m.team2Id === 'BYE') continue;
-      if (!seen.has(pairKey(m.team1Id, m.team2Id))) continue;
-      // Rematch — find a swap partner in the same round.
-      for (let j = 0; j < round.length; j++) {
-        if (i === j || fixed.has(j)) continue;
-        const m2 = round[j];
-        if (m2.isComplete) continue;
-        if (!m2.team1Id || !m2.team2Id) continue;
-        if (m2.team1Id === 'BYE' || m2.team2Id === 'BYE') continue;
-        const newK1 = pairKey(m2.team1Id, m.team2Id);
-        const newK2 = pairKey(m.team1Id, m2.team2Id);
-        if (seen.has(newK1) || seen.has(newK2)) continue;
-        // Swap team1Source pointers AND team1Id so the change persists.
-        const tmpSrc = m.team1Source; m.team1Source = m2.team1Source; m2.team1Source = tmpSrc;
-        const tmpId = m.team1Id; m.team1Id = m2.team1Id; m2.team1Id = tmpId;
-        fixed.add(i); fixed.add(j);
-        break;
-      }
-    }
-  };
-
-  // Skip CD R1 — it represents the entry point from MD R1 losers; rematches
-  // there would only exist if MD already paired the same teams (impossible).
-  for (let ri = 1; ri < cd.rounds.length; ri++) tryBreakRound(cd.rounds[ri]);
-  if (wcd && wcd.rounds) for (const r of wcd.rounds) tryBreakRound(r);
-}
+/* Rematches in CD R2+ from MD pairings are acceptable — players know
+   they may face the same opponent again. The previous rematch-breaker
+   would swap team1 pointers across CD/WCD rounds; that mutation
+   destabilized stored placements and conflicted with the "once-placed,
+   never-moves" rule. The breaker has been removed. */
 
 function populateAllDraws(eventData) {
   for (let i = 0; i < 10; i++) {
     const snap = JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]);
     populateDraw(eventData, eventData.mainDraw);
     populateDraw(eventData, eventData.consolationDraw);
-    redistributeConsolationR1(eventData);
     populateWaterfallDynamic(eventData);
     populateDraw(eventData, eventData.waterfallConsolationDraw);
-    preventRematches(eventData);
     if (JSON.stringify([eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw]) === snap) break;
   }
 }
@@ -1453,11 +1417,14 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
   if (!searchTerm || searchTerm.trim().length < 2) return [];
   const term = searchTerm.toLowerCase().trim();
   const matchingTeamIds = new Set();
-  eventData.teams.forEach(t => {
+  const checkTeam = t => {
+    if (!t || t.id === 'BYE') return;
     if (t.name.toLowerCase().includes(term) || (t.customDisplayName && t.customDisplayName.toLowerCase().includes(term))) {
       matchingTeamIds.add(t.id);
     }
-  });
+  };
+  eventData.teams.forEach(checkTeam);
+  (eventData.adhocTeams || []).forEach(checkTeam);
   if (matchingTeamIds.size === 0) return [];
   const results = [];
   const drawTypes = [
@@ -1468,7 +1435,7 @@ function findPlayerMatches(eventData, searchTerm, matchNumberMap) {
   const getName = (teamId) => {
     if (!teamId) return 'TBD';
     if (teamId === 'BYE') return 'BYE';
-    const t = eventData.teams.find(x => x.id === teamId);
+    const t = findTeamById(eventData, teamId);
     if (!t) return teamId;
     if (t.customDisplayName) return `${t.customDisplayName} (${t.name})`;
     return t.name;
@@ -1556,6 +1523,24 @@ function countDownstreamPlayed(eventData, matchId) {
 function resetMatchAndCascade(eventData, targetMatchId) {
   const deps = collectDependentMatchIds(eventData, targetMatchId);
   const allDraws = [eventData.mainDraw, eventData.consolationDraw, eventData.waterfallConsolationDraw];
+
+  // Identify teams that "arrived in CD/WCD because of" any reset match. Any
+  // such team currently sitting in CD R1 (via natural feed) or WCD R1 (via
+  // dynamic placement) must be cleared to prevent duplicates after the
+  // reset (bug 4: a player reset from MD/CD lingered in consolations).
+  const toEvict = new Set();
+  for (const draw of allDraws) {
+    if (!draw || !draw.rounds) continue;
+    for (const round of draw.rounds) {
+      for (const m of round) {
+        if (!deps.has(m.id)) continue;
+        if (m.isComplete && !m.isBye) {
+          if (m.loserId && m.loserId !== 'BYE') toEvict.add(m.loserId);
+        }
+      }
+    }
+  }
+
   for (const draw of allDraws) {
     if (!draw || !draw.rounds) continue;
     for (const round of draw.rounds) {
@@ -1579,10 +1564,39 @@ function resetMatchAndCascade(eventData, targetMatchId) {
       }
     }
   }
+
+  // Sweep CD R1, WCD R1, and any not-yet-played match to evict the displaced
+  // losers. They were placed by an upstream MD/CD result that no longer holds.
+  // Played matches and matches with manualOverride are left alone.
+  for (const draw of allDraws) {
+    if (!draw || !draw.rounds) continue;
+    for (const round of draw.rounds) {
+      for (const m of round) {
+        if (m.manualOverride) continue;
+        if (m.isComplete && !m.isBye) continue;
+        if (m.team1Id && toEvict.has(m.team1Id)) {
+          m.team1Id = null;
+          m.winnerId = null; m.loserId = null;
+          m.isComplete = false; m.isBye = false;
+          m.score1 = []; m.score2 = [];
+        }
+        if (m.team2Id && toEvict.has(m.team2Id)) {
+          m.team2Id = null;
+          m.winnerId = null; m.loserId = null;
+          m.isComplete = false; m.isBye = false;
+          m.score1 = []; m.score2 = [];
+        }
+      }
+    }
+  }
+
+  // Reset all unplayed WCD slots so populateWaterfallDynamic can re-resolve
+  // eligibility from scratch. Played WCD matches and manual ones are kept.
   const wcd = eventData.waterfallConsolationDraw;
   if (wcd && wcd.rounds && wcd.rounds[0]) {
     wcd.rounds[0].forEach(m => {
-      if (deps.has(m.id)) return;
+      if (m.manualOverride) return;
+      if (m.isComplete && !m.isBye) return;
       m.team1Id = null;
       m.team2Id = null;
       m.winnerId = null;
@@ -1594,6 +1608,8 @@ function resetMatchAndCascade(eventData, targetMatchId) {
     });
     for (let ri = 1; ri < wcd.rounds.length; ri++) {
       wcd.rounds[ri].forEach(m => {
+        if (m.manualOverride) return;
+        if (m.isComplete && !m.isBye) return;
         m.team1Id = null;
         m.team2Id = null;
         m.winnerId = null;
@@ -1603,6 +1619,65 @@ function resetMatchAndCascade(eventData, targetMatchId) {
         m.score1 = [];
         m.score2 = [];
       });
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Manual reset for Feature 2 — scope cascade to a single draw.
+   Resets the target match (clearing team ids and score state) and
+   any downstream matches in the same draw, leaving other draws
+   completely untouched. Used when an editor manually overrides a
+   CD or WCD match and wants the WCD reset to stay inside WCD's
+   7 matches without disturbing MD or CD progress.
+   ═══════════════════════════════════════════════════════════ */
+function resetMatchAndCascadeInDraw(eventData, targetMatchId, drawType) {
+  const drawKey =
+    drawType === 'MD' ? 'mainDraw' :
+    drawType === 'CD' ? 'consolationDraw' :
+    drawType === 'WCD' ? 'waterfallConsolationDraw' : null;
+  if (!drawKey) return;
+  const draw = eventData[drawKey];
+  if (!draw || !draw.rounds) return;
+
+  // Walk forward through this draw only, collecting all matches whose
+  // team1Source/team2Source points back to anything already in deps.
+  const deps = new Set([targetMatchId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const round of draw.rounds) {
+      for (const m of round) {
+        if (deps.has(m.id)) continue;
+        const s1 = m.team1Source, s2 = m.team2Source;
+        const ref1 = s1 && (s1.type === 'winner' || s1.type === 'loser') && deps.has(s1.matchId);
+        const ref2 = s2 && (s2.type === 'winner' || s2.type === 'loser') && deps.has(s2.matchId);
+        if (ref1 || ref2) { deps.add(m.id); grew = true; }
+      }
+    }
+  }
+
+  for (const round of draw.rounds) {
+    for (const m of round) {
+      if (!deps.has(m.id)) continue;
+      m.winnerId = null;
+      m.loserId = null;
+      m.isComplete = false;
+      m.isBye = false;
+      m.score1 = [];
+      m.score2 = [];
+      m.marshalled = false;
+      if (m.id === targetMatchId) {
+        m.team1Id = null;
+        m.team2Id = null;
+      } else {
+        if (m.team1Source && (m.team1Source.type === 'winner' || m.team1Source.type === 'loser') && deps.has(m.team1Source.matchId)) {
+          m.team1Id = null;
+        }
+        if (m.team2Source && (m.team2Source.type === 'winner' || m.team2Source.type === 'loser') && deps.has(m.team2Source.matchId)) {
+          m.team2Id = null;
+        }
+      }
     }
   }
 }
@@ -2207,11 +2282,8 @@ function SlotLabelEditor({ matchId, drawType, slotNum, currentLabel, isTbd, onSa
   );
 }
 
-function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, matchNumber, highlightedMatchId }) {
-  const getTeamObj = (teamId) => {
-    if (!teamId || teamId === 'BYE') return null;
-    return eventData.teams.find(x => x.id === teamId) || null;
-  };
+function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, onManualReset, matchNumber, highlightedMatchId }) {
+  const getTeamObj = (teamId) => findTeamById(eventData, teamId);
 
   // Resolve what to display for one slot. Returns { name, label, teamCustomName }
   // - name: the primary label ('BYE', 'TBD', or the team's name).
@@ -2365,13 +2437,23 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
           )}
         </>
       )}
+      {!readOnly && onManualReset && (drawType === 'CD' || drawType === 'WCD') && (
+        <button
+          className="match-manual-btn"
+          onClick={() => onManualReset(match.id, drawType)}
+          title={drawType === 'WCD' ? 'Reset and manually populate this WCD match. Only WCD matches will be affected.' : 'Reset and manually populate this CD match. Only CD matches will be affected.'}
+        >
+          ✎ Manual Reset / Populate
+        </button>
+      )}
+      {match.manualOverride && <div className="match-manual-tag">Manually populated</div>}
       {match.isBye && <div className="match-bye-text">{getWinnerDisplay(match.winnerId)} advances (BYE)</div>}
       {match.isComplete && !match.isBye && <div className="match-winner-text">✓ Winning Team: {getWinnerDisplay(match.winnerId)}</div>}
     </div>
   );
 }
 
-function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, matchNumberMap, highlightedMatchId }) {
+function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, onManualReset, matchNumberMap, highlightedMatchId }) {
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
     MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final'],
@@ -2379,30 +2461,36 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onC
     WCD: ['WCD Round 1', 'WCD Semi-Finals', 'WCD Final']
   };
   const labels = roundLabels[drawType] || [];
+  const maxMatches = drawData.rounds.reduce((mx, r) => Math.max(mx, r.length), 1);
 
   return (
     <div className="draw-container">
-      {drawData.rounds.map((roundMatches, ri) => (
-        <div key={ri} className="round-col">
-          <div className="round-header">{labels[ri] || `Round ${ri + 1}`}</div>
-          {roundMatches.map(m => (
-            <MatchCard
-              key={m.id}
-              match={m}
-              eventData={eventData}
-              drawType={drawType}
-              readOnly={readOnly}
-              onSave={onSave}
-              onEdit={onEdit}
-              onCustomName={onCustomName}
-              onSlotLabel={onSlotLabel}
-              onToggleMarshal={onToggleMarshal}
-              matchNumber={matchNumberMap ? matchNumberMap[m.id] : null}
-              highlightedMatchId={highlightedMatchId}
-            />
-          ))}
-        </div>
-      ))}
+      {drawData.rounds.map((roundMatches, ri) => {
+        const span = Math.max(1, Math.round(maxMatches / Math.max(roundMatches.length, 1)));
+        return (
+          <div key={ri} className="round-col" style={{ '--num-rows': maxMatches }}>
+            <div className="round-header">{labels[ri] || `Round ${ri + 1}`}</div>
+            {roundMatches.map(m => (
+              <div key={m.id} className="round-slot" style={{ '--row-span': span }}>
+                <MatchCard
+                  match={m}
+                  eventData={eventData}
+                  drawType={drawType}
+                  readOnly={readOnly}
+                  onSave={onSave}
+                  onEdit={onEdit}
+                  onCustomName={onCustomName}
+                  onSlotLabel={onSlotLabel}
+                  onToggleMarshal={onToggleMarshal}
+                  onManualReset={onManualReset}
+                  matchNumber={matchNumberMap ? matchNumberMap[m.id] : null}
+                  highlightedMatchId={highlightedMatchId}
+                />
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2424,15 +2512,21 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
       const ev = await loadTournamentEvents(tournamentId);
       Object.keys(EVENT_CODES).forEach(eid => {
         if (!ev[eid]) ev[eid] = createEventObject(eid);
-        if (!ev[eid].teams || ev[eid].teams.length !== TOTAL_TEAMS) ev[eid].teams = createInitialTeams(eid);
+        if (!ev[eid].teams || ev[eid].teams.length < TOTAL_TEAMS) ev[eid].teams = createInitialTeams(eid);
         if (!ev[eid].mainDraw || !ev[eid].mainDraw.rounds || !Array.isArray(ev[eid].mainDraw.rounds)) ev[eid].mainDraw = generateMainDraw();
         if (!ev[eid].consolationDraw || !ev[eid].consolationDraw.rounds || !Array.isArray(ev[eid].consolationDraw.rounds)) ev[eid].consolationDraw = generateConsolationDraw();
         if (!ev[eid].waterfallConsolationDraw || !ev[eid].waterfallConsolationDraw.rounds || !Array.isArray(ev[eid].waterfallConsolationDraw.rounds)) ev[eid].waterfallConsolationDraw = generateWaterfallDraw();
+        if (!Array.isArray(ev[eid].adhocTeams)) ev[eid].adhocTeams = [];
         ev[eid].teams.forEach((t, idx) => {
           if (t.originalPlayerSlot === undefined) t.originalPlayerSlot = idx;
           t.mainDrawLosses = t.mainDrawLosses || 0;
           t.consolationLosses = t.consolationLosses || 0;
           if (t.customDisplayName === undefined) t.customDisplayName = '';
+        });
+        ev[eid].adhocTeams.forEach(t => {
+          if (t.customDisplayName === undefined) t.customDisplayName = '';
+          t.mainDrawLosses = t.mainDrawLosses || 0;
+          t.consolationLosses = t.consolationLosses || 0;
         });
         populateAllDraws(ev[eid]);
       });
@@ -2473,28 +2567,56 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     setSaving(false);
   };
 
+  /* mutate(updater) clones the active event, runs the updater (which may
+     mutate the clone or return false to abort), persists the new state via
+     setEvents (functional form to avoid stale-closure races — bug 5: rapid
+     custom-name edits would drop changes when each handler captured the
+     pre-edit `events` value), and writes the result to Firestore. */
+  const mutate = useCallback(async (updater) => {
+    if (!canEdit) return;
+    let toSave = null;
+    let savedEid = null;
+    setEvents(prev => {
+      if (!prev) return prev;
+      const eid = activeEvent;
+      if (!prev[eid]) return prev;
+      const ev = JSON.parse(JSON.stringify(prev[eid]));
+      const result = updater(ev, prev);
+      if (result === false) return prev;
+      toSave = ev;
+      savedEid = eid;
+      return { ...prev, [eid]: ev };
+    });
+    if (toSave && savedEid) {
+      setSaving(true);
+      try { await saveEventData(tournamentId, savedEid, toSave); }
+      catch (err) { alert('Save error: ' + err.message); }
+      setSaving(false);
+    }
+  }, [canEdit, activeEvent, tournamentId]);
+
   const handleScoreSave = async (matchId, drawType, s1, s2) => {
     if (!canEdit) return;
-    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
-    const match = findMatch(ev, drawType, matchId);
-    if (!match) return;
-    match.score1 = s1; match.score2 = s2;
-    const result = determineMatchWinner(match, drawType);
-    if (!result.valid) { alert('Scores incomplete or invalid.'); return; }
-    match.winnerId = result.winnerId;
-    match.loserId = result.loserId;
-    match.isComplete = true;
-    if (!match.isOverallChampionship && !match.isSecondPlacePlayoff) {
-      const loser = ev.teams.find(t => t.id === match.loserId);
-      if (loser) {
-        if (drawType === 'MD') loser.mainDrawLosses = (loser.mainDrawLosses || 0) + 1;
-        else if (drawType === 'CD') loser.consolationLosses = (loser.consolationLosses || 0) + 1;
+    let validationFailed = false;
+    await mutate((ev) => {
+      const match = findMatch(ev, drawType, matchId);
+      if (!match) return false;
+      match.score1 = s1; match.score2 = s2;
+      const result = determineMatchWinner(match, drawType);
+      if (!result.valid) { validationFailed = true; return false; }
+      match.winnerId = result.winnerId;
+      match.loserId = result.loserId;
+      match.isComplete = true;
+      if (!match.isOverallChampionship && !match.isSecondPlacePlayoff) {
+        const loser = ev.teams.find(t => t.id === match.loserId);
+        if (loser) {
+          if (drawType === 'MD') loser.mainDrawLosses = (loser.mainDrawLosses || 0) + 1;
+          else if (drawType === 'CD') loser.consolationLosses = (loser.consolationLosses || 0) + 1;
+        }
       }
-    }
-    populateAllDraws(ev);
-    const newEvents = { ...events, [activeEvent]: ev };
-    setEvents(newEvents);
-    await saveEvent(activeEvent, ev);
+      populateAllDraws(ev);
+    });
+    if (validationFailed) alert('Scores incomplete or invalid.');
   };
 
   const handleScoreEdit = async (matchId, drawType) => {
@@ -2505,52 +2627,175 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
       msg = `This will also reset ${downstream} downstream match${downstream !== 1 ? 'es' : ''} whose results depend on this one. Continue?`;
     }
     if (!confirm(msg)) return;
-    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
-    resetMatchAndCascade(ev, matchId);
-    populateAllDraws(ev);
-    const newEvents = { ...events, [activeEvent]: ev };
-    setEvents(newEvents);
-    await saveEvent(activeEvent, ev);
+    await mutate((ev) => {
+      resetMatchAndCascade(ev, matchId);
+      populateAllDraws(ev);
+    });
   };
 
   /* ═══════ Custom Display Name handler ═══════ */
   const handleCustomNameUpdate = useCallback(async (teamId, customName) => {
-    if (!canEdit) return;
-    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
-    const team = ev.teams.find(t => t.id === teamId);
-    if (!team) return;
-    team.customDisplayName = customName;
-    const newEvents = { ...events, [activeEvent]: ev };
-    setEvents(newEvents);
-    await saveEvent(activeEvent, ev);
-  }, [canEdit, events, activeEvent, tournamentId]);
+    await mutate((ev) => {
+      const team = ev.teams.find(t => t.id === teamId)
+        || (ev.adhocTeams || []).find(t => t.id === teamId);
+      if (!team) return false;
+      team.customDisplayName = customName;
+    });
+  }, [mutate]);
 
   /* ═══════ Slot Label handler — per-match-card label for any
      BYE or TBD slot. Writes onto the match itself so the label
      stays on this match card and does not propagate. ═══════ */
   const handleSlotLabelUpdate = useCallback(async (matchId, drawType, slotNum, label) => {
-    if (!canEdit) return;
-    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
-    const match = findMatch(ev, drawType, matchId);
-    if (!match) return;
-    if (slotNum === 1) match.team1Label = label;
-    else if (slotNum === 2) match.team2Label = label;
-    const newEvents = { ...events, [activeEvent]: ev };
-    setEvents(newEvents);
-    await saveEvent(activeEvent, ev);
-  }, [canEdit, events, activeEvent, tournamentId]);
+    await mutate((ev) => {
+      const match = findMatch(ev, drawType, matchId);
+      if (!match) return false;
+      if (slotNum === 1) match.team1Label = label;
+      else if (slotNum === 2) match.team2Label = label;
+    });
+  }, [mutate]);
 
   /* ═══════ Marshal toggle handler ═══════ */
   const handleToggleMarshal = useCallback(async (matchId, drawType) => {
+    await mutate((ev) => {
+      const match = findMatch(ev, drawType, matchId);
+      if (!match) return false;
+      match.marshalled = !match.marshalled;
+    });
+  }, [mutate]);
+
+  /* ═══════ Feature 1 — Add a late-entry player into a BYE slot ═══════ */
+  const handleAddPlayer = useCallback(async (slotIndex) => {
     if (!canEdit) return;
-    const ev = JSON.parse(JSON.stringify(events[activeEvent]));
-    const match = findMatch(ev, drawType, matchId);
-    if (!match) return;
-    match.marshalled = !match.marshalled;
-    const newEvents = { ...events, [activeEvent]: ev };
-    setEvents(newEvents);
-    await saveEvent(activeEvent, ev);
-  }, [canEdit, events, activeEvent, tournamentId]);
+    const cur = events[activeEvent];
+    if (!cur || !cur.teams || !cur.teams[slotIndex]) return;
+    if (cur.teams[slotIndex].id !== 'BYE') {
+      alert('That slot already has a player.');
+      return;
+    }
+    const name = prompt('Enter the late entry\'s team name:');
+    if (name === null) return;
+    if (!name.trim()) { alert('Name cannot be empty.'); return; }
+    const mdR1Idx = Math.floor(slotIndex / 2);
+    const mdR1Match = cur.mainDraw && cur.mainDraw.rounds && cur.mainDraw.rounds[0]
+      ? cur.mainDraw.rounds[0][mdR1Idx] : null;
+    if (mdR1Match && mdR1Match.isComplete && !mdR1Match.isBye) {
+      if (!confirm('Their MD R1 match has already been played. Adding this player will reset that match and any matches downstream. Continue?')) return;
+    }
+    await mutate((ev) => {
+      if (slotIndex < 0 || slotIndex >= ev.teams.length) return false;
+      if (ev.teams[slotIndex].id !== 'BYE') return false;
+      const newId = `${activeEvent}_late_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+      ev.teams[slotIndex] = {
+        id: newId,
+        name: name.trim(),
+        customDisplayName: '',
+        originalPlayerSlot: slotIndex,
+        mainDrawLosses: 0,
+        consolationLosses: 0
+      };
+      const m = ev.mainDraw.rounds[0][mdR1Idx];
+      if (m) {
+        // Reset the MD R1 match completely so the new player can play it
+        m.team1Id = null; m.team2Id = null;
+        m.score1 = []; m.score2 = [];
+        m.winnerId = null; m.loserId = null;
+        m.isComplete = false; m.isBye = false;
+        m.marshalled = false;
+        // Also cascade-reset downstream so any prior auto-advance result
+        // (BYE-vs-real, etc.) is cleared
+        resetMatchAndCascade(ev, m.id);
+      }
+      populateAllDraws(ev);
+    });
+  }, [mutate, canEdit, events, activeEvent]);
+
+  /* ═══════ Feature 1 — Remove a no-show player, replacing with a BYE ═══════ */
+  const handleRemovePlayer = useCallback(async (slotIndex) => {
+    if (!canEdit) return;
+    const cur = events[activeEvent];
+    if (!cur || !cur.teams || !cur.teams[slotIndex]) return;
+    const team = cur.teams[slotIndex];
+    if (team.id === 'BYE') return;
+    if (!confirm(`Remove "${team.name}" from the draw and replace with a BYE? Their MD R1 match (and any downstream matches involving them) will be reset.`)) return;
+    await mutate((ev) => {
+      if (slotIndex < 0 || slotIndex >= ev.teams.length) return false;
+      if (ev.teams[slotIndex].id === 'BYE') return false;
+      const removedId = ev.teams[slotIndex].id;
+      ev.teams[slotIndex] = {
+        id: 'BYE', name: 'BYE', customDisplayName: '',
+        originalPlayerSlot: -1, mainDrawLosses: 0, consolationLosses: 0
+      };
+      const mdR1Idx = Math.floor(slotIndex / 2);
+      const m = ev.mainDraw.rounds[0][mdR1Idx];
+      if (m) {
+        m.team1Id = null; m.team2Id = null;
+        m.score1 = []; m.score2 = [];
+        m.winnerId = null; m.loserId = null;
+        m.isComplete = false; m.isBye = false;
+        m.marshalled = false;
+        resetMatchAndCascade(ev, m.id);
+      }
+      // Brute-force scrub any lingering refs to the removed team — covers
+      // cases where the team had advanced into CD/WCD before removal.
+      [ev.mainDraw, ev.consolationDraw, ev.waterfallConsolationDraw].forEach(draw => {
+        if (!draw || !draw.rounds) return;
+        draw.rounds.forEach(round => round.forEach(mm => {
+          let cleared = false;
+          if (mm.team1Id === removedId) { mm.team1Id = null; cleared = true; }
+          if (mm.team2Id === removedId) { mm.team2Id = null; cleared = true; }
+          if (cleared) {
+            mm.score1 = []; mm.score2 = [];
+            mm.winnerId = null; mm.loserId = null;
+            mm.isComplete = false; mm.isBye = false;
+            mm.marshalled = false;
+          }
+        }));
+      });
+      populateAllDraws(ev);
+    });
+  }, [mutate, canEdit, events, activeEvent]);
+
+  /* ═══════ Feature 2 — Manually reset & populate a CD or WCD match.
+     Cascade is scoped to that draw only, so a WCD reset never touches
+     MD or CD (and vice versa for CD). ═══════ */
+  const handleManualReset = useCallback(async (matchId, drawType) => {
+    if (!canEdit) return;
+    if (drawType !== 'CD' && drawType !== 'WCD') return;
+    const drawLabel = drawType === 'CD' ? 'consolation' : 'waterfall consolation';
+    const promptMsg = `Manually reset this match and any downstream ${drawLabel} matches? Main draw${drawType === 'WCD' ? ' and consolation draw' : ''} will not be affected.`;
+    if (!confirm(promptMsg)) return;
+    const team1Name = prompt('Enter Team 1 name (leave blank to leave as BYE):');
+    if (team1Name === null) return;
+    const team2Name = prompt('Enter Team 2 name (leave blank to leave as BYE):');
+    if (team2Name === null) return;
+    await mutate((ev) => {
+      const match = findMatch(ev, drawType, matchId);
+      if (!match) return false;
+      resetMatchAndCascadeInDraw(ev, matchId, drawType);
+      match.team1Id = null; match.team2Id = null;
+      match.score1 = []; match.score2 = [];
+      match.winnerId = null; match.loserId = null;
+      match.isComplete = false; match.isBye = false;
+      match.marshalled = false;
+      match.manualOverride = true;
+      if (!Array.isArray(ev.adhocTeams)) ev.adhocTeams = [];
+      const mkAdhoc = (name, suffix) => {
+        const id = `${ev.id || activeEvent}_adhoc_${Date.now()}_${Math.random().toString(36).slice(2,7)}_${suffix}`;
+        ev.adhocTeams.push({
+          id, name: name.trim(), customDisplayName: '',
+          originalPlayerSlot: -1, mainDrawLosses: 0, consolationLosses: 0
+        });
+        return id;
+      };
+      if (team1Name.trim()) match.team1Id = mkAdhoc(team1Name, '1');
+      else match.team1Id = 'BYE';
+      if (team2Name.trim()) match.team2Id = mkAdhoc(team2Name, '2');
+      else match.team2Id = 'BYE';
+      // Run populate to auto-resolve BYE outcomes (e.g. real-vs-BYE)
+      populateAllDraws(ev);
+    });
+  }, [mutate, canEdit, activeEvent]);
 
   const handleSaveTeams = async () => {
     if (!canEdit) return;
@@ -2615,10 +2860,11 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
         const imported = JSON.parse(text);
         Object.keys(EVENT_CODES).forEach(eid => {
           if (!imported[eid]) imported[eid] = createEventObject(eid);
-          if (!imported[eid].teams || imported[eid].teams.length !== TOTAL_TEAMS) imported[eid].teams = createInitialTeams(eid);
+          if (!imported[eid].teams || imported[eid].teams.length < TOTAL_TEAMS) imported[eid].teams = createInitialTeams(eid);
           if (!imported[eid].mainDraw || !imported[eid].mainDraw.rounds) imported[eid].mainDraw = generateMainDraw();
           if (!imported[eid].consolationDraw || !imported[eid].consolationDraw.rounds) imported[eid].consolationDraw = generateConsolationDraw();
           if (!imported[eid].waterfallConsolationDraw || !imported[eid].waterfallConsolationDraw.rounds) imported[eid].waterfallConsolationDraw = generateWaterfallDraw();
+          if (!Array.isArray(imported[eid].adhocTeams)) imported[eid].adhocTeams = [];
           imported[eid].mainDraw = deserializeDrawFromFirestore(imported[eid].mainDraw);
           imported[eid].consolationDraw = deserializeDrawFromFirestore(imported[eid].consolationDraw);
           imported[eid].waterfallConsolationDraw = deserializeDrawFromFirestore(imported[eid].waterfallConsolationDraw);
@@ -2627,6 +2873,11 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
             t.mainDrawLosses = t.mainDrawLosses || 0;
             t.consolationLosses = t.consolationLosses || 0;
             if (t.customDisplayName === undefined) t.customDisplayName = '';
+          });
+          imported[eid].adhocTeams.forEach(t => {
+            if (t.customDisplayName === undefined) t.customDisplayName = '';
+            t.mainDrawLosses = t.mainDrawLosses || 0;
+            t.consolationLosses = t.consolationLosses || 0;
           });
           populateAllDraws(imported[eid]);
         });
@@ -2774,6 +3025,11 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
         <>
           <div className="card">
             <h3>Team Entries — {EVENT_CODES[activeEvent]}</h3>
+            {canEdit && (
+              <div className="text-dim text-sm mb-2">
+                After shuffle: use <strong>+ Add</strong> on a BYE row for a late entry, or <strong>Remove</strong> on a player row for a no-show.
+              </div>
+            )}
             <div className="team-grid">
               {ev.teams.map((team, idx) => (
                 <div key={team.id + '_' + idx} className="team-row">
@@ -2799,11 +3055,33 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
                         style={{ color: 'var(--teal)', fontStyle: 'italic' }}
                         maxLength={60}
                       />
+                      {canEdit && (
+                        <div className="team-row-actions">
+                          <button
+                            type="button"
+                            className="team-row-btn add"
+                            onClick={() => handleAddPlayer(idx)}
+                            title="Add a late-entry player into this BYE slot"
+                          >+ Add</button>
+                        </div>
+                      )}
                     </>
                   ) : (
-                    <input value={team.name} disabled={!canEdit}
-                      onChange={e => updateTeamName(activeEvent, team.id, e.target.value)}
-                    />
+                    <>
+                      <input value={team.name} disabled={!canEdit}
+                        onChange={e => updateTeamName(activeEvent, team.id, e.target.value)}
+                      />
+                      {canEdit && (
+                        <div className="team-row-actions">
+                          <button
+                            type="button"
+                            className="team-row-btn remove"
+                            onClick={() => handleRemovePlayer(idx)}
+                            title="Remove this player and replace with a BYE"
+                          >Remove</button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
@@ -2815,11 +3093,11 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           </div>
           <div className="card draw-section">
             <h3>Consolation Draw</h3>
-            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} onManualReset={canEdit ? handleManualReset : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Waterfall Consolations</h3>
-            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} onManualReset={canEdit ? handleManualReset : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
         </>
       )}
