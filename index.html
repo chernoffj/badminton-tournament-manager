@@ -127,6 +127,15 @@ input, button, select, textarea { font-family: inherit; }
 .match-team.winner .match-team-name { color: var(--green); font-weight: 700; }
 .match-team.loser .match-team-name { color: var(--text-dim); text-decoration: line-through; }
 .match-scores { display: flex; gap: 3px; flex-shrink: 0; }
+/* Best-of-3 cards (CD Final, 2nd Place Playoff, MD SF/Final) hold 3 score
+   boxes per slot. Inside a ~260px column the inline layout leaves only
+   ~70px for the team name and pushes the third box against the column
+   border, where it can be clipped or visually overlap the next column.
+   Stack the 3 boxes on their own row below the name so all three are
+   always visible and clickable. */
+.match-team.bo3 { flex-wrap: wrap; align-items: stretch; gap: 4px 6px; }
+.match-team.bo3 .match-team-name-block { flex: 1 1 100%; min-width: 0; }
+.match-team.bo3 .match-scores { flex: 0 0 auto; align-self: flex-end; }
 .score-box { width: 48px; padding: 3px; text-align: center; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text-bright); font-size: 0.82rem; font-family: var(--font-mono); }
 .score-box:focus { border-color: var(--accent); outline: none; }
 .score-box:disabled { opacity: 0.5; }
@@ -2498,7 +2507,7 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
         )}
       </div>
       <div
-        className={`match-team ${t1cls} ${manualMode ? 'manual' : ''}`}
+        className={`match-team ${t1cls} ${manualMode ? 'manual' : ''} ${bo3 ? 'bo3' : ''}`}
         onDragOver={allowDrop}
         onDrop={handleDropOnSlot(1)}
       >
@@ -2543,7 +2552,7 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
         </div>
       </div>
       <div
-        className={`match-team ${t2cls} ${manualMode ? 'manual' : ''}`}
+        className={`match-team ${t2cls} ${manualMode ? 'manual' : ''} ${bo3 ? 'bo3' : ''}`}
         onDragOver={allowDrop}
         onDrop={handleDropOnSlot(2)}
       >
