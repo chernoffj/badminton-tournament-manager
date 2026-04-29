@@ -41,7 +41,7 @@ src = src.replace(/async function deleteTournament[\s\S]*?\n\}\n/, '');
 src = src.replace(/function subscribeToEvent[\s\S]*?\n\}\n/, '');
 
 const ctx = {};
-const fn = new Function(src + '\n; return {createInitialTeams, createEventObject, generateMainDraw, generateConsolationDraw, generateWaterfallDraw, populateDraw, populateWaterfallDynamic, populateAllDraws, shuffleEventTeams, determineMatchWinner, findMatch, findTeamById, findMatchAcrossDraws, getPlayerIdFromSource, whichDrawForMatchId, collectDependentMatchIds, countDownstreamPlayed, resetMatchAndCascade, resetMatchAndCascadeInDraw, EVENT_CODES, NUM_SCHOOLS, TEAMS_PER_SCHOOL, TOTAL_TEAMS, fyShuffle, isPlaceholderName};');
+const fn = new Function(src + '\n; const React = { useState: () => [null, () => {}], useEffect: () => {}, useRef: () => ({current: null}), useCallback: f => f, useMemo: f => f() };\n; return {createInitialTeams, createEventObject, generateMainDraw, generateConsolationDraw, generateWaterfallDraw, populateDraw, populateWaterfallDynamic, populateAllDraws, shuffleEventTeams, determineMatchWinner, findMatch, findTeamById, findMatchAcrossDraws, getPlayerIdFromSource, whichDrawForMatchId, collectDependentMatchIds, countDownstreamPlayed, resetMatchAndCascade, resetMatchAndCascadeInDraw, EVENT_CODES, NUM_SCHOOLS, TEAMS_PER_SCHOOL, TOTAL_TEAMS, fyShuffle, isPlaceholderName};');
 const lib = fn();
 Object.assign(ctx, lib);
 
@@ -374,6 +374,83 @@ function testFeature2Manual() {
   assert(found && found.name === 'Custom A', 'feature2: findTeamById finds adhoc team');
 }
 
+function testManualMode() {
+  // Toggling manual mode must:
+  //   - preserve every existing team1Id/team2Id, score, winner, isComplete, isBye flag
+  //   - cause populateAllDraws to be a no-op afterward (no auto-fill of TBDs, no
+  //     auto-completion of new BYEs, no waterfall placement)
+  //   - allow manual editing via direct match.team1Id / team2Id mutation, then
+  //     keep the mutation stable across populate calls
+  const ev = makeEvent('BS', 4);
+  // Play half of MD R1 to exercise both played and pending matches
+  let played = 0;
+  for (const m of ev.mainDraw.rounds[0]) {
+    if (m.team1Id === 'BYE' || m.team2Id === 'BYE' || m.isBye) continue;
+    if (played >= 4) break;
+    playMatch(ev, m);
+    played++;
+  }
+  ctx.populateAllDraws(ev);
+
+  // Snapshot the entire state shape
+  const snap = JSON.stringify(ev);
+
+  // Turn on manual mode
+  ev.manualMode = true;
+
+  // Run populateAllDraws — should be a complete no-op
+  ctx.populateAllDraws(ev);
+  ev.manualMode = true;
+  assert(JSON.stringify(ev) === JSON.stringify({ ...JSON.parse(snap), manualMode: true }),
+    'manualMode: populateAllDraws is a no-op after toggle ON');
+
+  // Manually populate a CD R1 match's empty slot with an adhoc team
+  const cd1 = ev.consolationDraw.rounds[0][0];
+  // ensure adhocTeams exists
+  if (!ev.adhocTeams) ev.adhocTeams = [];
+  const adId = 'BS_manual_test_1';
+  ev.adhocTeams.push({ id: adId, name: 'Manual Player A', customDisplayName: '',
+    originalPlayerSlot: -1, mainDrawLosses: 0, consolationLosses: 0 });
+  cd1.team1Id = adId;
+
+  // populate again — manual entry must persist
+  ctx.populateAllDraws(ev);
+  assert(cd1.team1Id === adId, 'manualMode: manually-set team1Id persists across populate');
+
+  // findTeamById should find adhoc
+  const found = ctx.findTeamById(ev, adId);
+  assert(found && found.name === 'Manual Player A', 'manualMode: findTeamById resolves adhoc team');
+
+  // Toggle off — populate runs and may fill TBDs from sources, but it must
+  // NOT clobber the manually-set adId (since adId came from sources for cd1
+  // — actually cd1 source is loser of M1.1; if M1.1 isn't played, cd1 should
+  // keep adId. If M1.1 is played, cd1.team1Id was already adId so source
+  // resolution skips it). Verify the manual adId stays.
+  ev.manualMode = false;
+  ctx.populateAllDraws(ev);
+  assert(cd1.team1Id === adId, 'manualMode: turning OFF preserves manually-set teamIds (no overwrite)');
+}
+
+function testManualModeStability() {
+  // Manual mode must not reshuffle WCD R1 even when eligibility changes.
+  const ev = makeEvent('BS', 0);
+  // Play to a state where WCD R1 has placements
+  let safety = 0;
+  while (safety++ < 80) {
+    const ready = pickReadyMatches(ev);
+    if (ready.length === 0) break;
+    playMatch(ev, ready[0]);
+  }
+  // Capture WCD R1 state
+  const wcdR1 = ev.waterfallConsolationDraw.rounds[0];
+  const beforeSnap = wcdR1.map(m => `${m.id}:${m.team1Id}|${m.team2Id}:${m.isComplete}`).join(';');
+  // Turn on manual mode
+  ev.manualMode = true;
+  ctx.populateAllDraws(ev);
+  const afterSnap = wcdR1.map(m => `${m.id}:${m.team1Id}|${m.team2Id}:${m.isComplete}`).join(';');
+  assert(beforeSnap === afterSnap, 'manualMode: WCD R1 state preserved when toggling on');
+}
+
 console.log('=== Stress tournament runs ===');
 for (let s = 1; s <= 30; s++) {
   for (const byes of [0, 4, 8, 12]) {
@@ -390,6 +467,9 @@ console.log('=== Feature 1 (add player) ===');
 testFeature1Add();
 console.log('=== Feature 2 (manual populate) ===');
 testFeature2Manual();
+console.log('=== Feature 3 (manual mode toggle) ===');
+testManualMode();
+testManualModeStability();
 
 console.log(`\n${assertions} assertions, ${failures} failures`);
 if (failures > 0) process.exit(1);

@@ -408,6 +408,59 @@ input, button, select, textarea { font-family: inherit; }
   margin-top: 4px;
   letter-spacing: 0.4px;
 }
+.manualmode-banner {
+  background: var(--purple-dim);
+  color: var(--purple);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  margin: 8px 0 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--purple);
+  line-height: 1.4;
+}
+.match-team.manual {
+  background: rgba(124,77,255,0.04);
+  border-radius: 4px;
+}
+.match-team.manual:hover {
+  background: rgba(124,77,255,0.08);
+}
+.manual-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.manual-slot-drag-handle {
+  font-size: 1rem;
+  color: var(--text-dim);
+  cursor: grab;
+  user-select: none;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.manual-slot-drag-handle:active { cursor: grabbing; }
+.manual-slot-drag-handle.disabled {
+  color: var(--border);
+  cursor: not-allowed;
+}
+.manual-slot-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-bright);
+}
+.manual-slot-input:focus {
+  outline: none;
+  border-color: var(--purple);
+}
 .team-row .team-row-actions {
   display: flex;
   gap: 4px;
@@ -802,7 +855,8 @@ function createEventObject(eventId) {
     mainDraw: generateMainDraw(),
     consolationDraw: generateConsolationDraw(),
     waterfallConsolationDraw: generateWaterfallDraw(),
-    setupComplete: false
+    setupComplete: false,
+    manualMode: false
   };
 }
 
@@ -924,6 +978,10 @@ function getPlayerIdFromSource(eventData, source) {
 
 function populateDraw(eventData, draw) {
   if (!draw || !draw.rounds) return;
+  // Manual event mode pauses ALL automatic placement and propagation.
+  // Existing winnerIds / teamIds are preserved as-is so the editor can
+  // reshuffle by drag-drop or by typing without anything snapping back.
+  if (eventData.manualMode) return;
   draw.rounds.forEach(round => {
     round.forEach(match => {
       if (match.isComplete && !match.isBye) return;
@@ -998,6 +1056,7 @@ function populateDraw(eventData, draw) {
    and refreshes see the same draw.
    ═══════════════════════════════════════════════════════════ */
 function populateWaterfallDynamic(eventData) {
+  if (eventData.manualMode) return;
   const wcd = eventData.waterfallConsolationDraw;
   if (!wcd || !wcd.rounds || !wcd.rounds[0]) return;
   const wcdR1 = wcd.rounds[0];
@@ -2282,7 +2341,61 @@ function SlotLabelEditor({ matchId, drawType, slotNum, currentLabel, isTbd, onSa
   );
 }
 
-function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, onManualReset, matchNumber, highlightedMatchId }) {
+/* In-place text editor for a match slot when the event is in manual mode.
+   Local "draft" state lets the editor type freely; the change is saved on
+   blur or Enter so each keystroke doesn't spam the persistence layer. */
+function ManualSlotEditor({ match, drawType, slotNum, eventData, onSetSlotName, onSlotDrop }) {
+  const teamId = slotNum === 1 ? match.team1Id : match.team2Id;
+  const t = findTeamById(eventData, teamId);
+  const displayed = teamId === 'BYE' ? 'BYE' : (t ? t.name : '');
+  const [draft, setDraft] = React.useState(displayed);
+  const [dirty, setDirty] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!dirty) setDraft(displayed);
+  }, [displayed, dirty]);
+
+  const commit = () => {
+    if (draft === displayed) { setDirty(false); return; }
+    onSetSlotName(match.id, drawType, slotNum, draft);
+    setDirty(false);
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter') { e.target.blur(); }
+    if (e.key === 'Escape') { setDraft(displayed); setDirty(false); e.target.blur(); }
+  };
+
+  const dragPayload = { sourceMatchId: match.id, sourceDrawType: drawType, sourceSlotNum: slotNum };
+
+  return (
+    <div className="manual-slot-row">
+      <span
+        className={`manual-slot-drag-handle ${teamId ? '' : 'disabled'}`}
+        draggable={!!teamId}
+        onDragStart={e => {
+          if (!teamId) { e.preventDefault(); return; }
+          e.dataTransfer.effectAllowed = 'copy';
+          e.dataTransfer.setData('text/plain', JSON.stringify(dragPayload));
+        }}
+        title={teamId ? 'Drag this player to another slot' : 'Empty slot — type a name first'}
+      >⠿</span>
+      <input
+        type="text"
+        className="manual-slot-input"
+        value={draft}
+        onChange={e => { setDraft(e.target.value); setDirty(true); }}
+        onBlur={commit}
+        onKeyDown={handleKey}
+        placeholder="player name…"
+        maxLength={80}
+      />
+    </div>
+  );
+}
+
+function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, onManualReset, onSetSlotName, onSlotDrop, matchNumber, highlightedMatchId }) {
+  const manualMode = !!(eventData && eventData.manualMode);
   const getTeamObj = (teamId) => findTeamById(eventData, teamId);
 
   // Resolve what to display for one slot. Returns { name, label, teamCustomName }
@@ -2331,8 +2444,24 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
     onSave(match.id, drawType, s1, s2);
   };
 
-  const canSave = !readOnly && !match.isComplete && match.team1Id && match.team2Id && match.team1Id !== 'BYE' && match.team2Id !== 'BYE';
+  const canSave = !readOnly && match.team1Id && match.team2Id && match.team1Id !== 'BYE' && match.team2Id !== 'BYE' && (!match.isComplete || manualMode);
   const canEdit = !readOnly && match.isComplete && !match.isBye && onEdit;
+
+  const handleDropOnSlot = (slotNum) => (e) => {
+    e.preventDefault();
+    if (readOnly || !manualMode || !onSlotDrop) return;
+    let payload;
+    try { payload = JSON.parse(e.dataTransfer.getData('text/plain')); }
+    catch (_) { return; }
+    if (!payload || !payload.sourceMatchId) return;
+    onSlotDrop(payload.sourceMatchId, payload.sourceDrawType, payload.sourceSlotNum,
+               match.id, drawType, slotNum);
+  };
+  const allowDrop = (e) => {
+    if (readOnly || !manualMode || !onSlotDrop) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
   let label = match.customLabel || match.id;
   if (bo3 && !label.toLowerCase().includes('best of 3')) label += ' (Bo3)';
 
@@ -2340,7 +2469,7 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
   const t2cls = match.isComplete ? (match.winnerId === match.team2Id ? 'winner' : 'loser') : '';
 
   const isHighlighted = highlightedMatchId === match.id;
-  const downstreamCount = canEdit ? countDownstreamPlayed(eventData, match.id) : 0;
+  const downstreamCount = canEdit && !manualMode ? countDownstreamPlayed(eventData, match.id) : 0;
 
   const t1Display = computeSlotDisplay(match.team1Id, match.team1Source, match.team1Label);
   const t2Display = computeSlotDisplay(match.team2Id, match.team2Source, match.team2Label);
@@ -2368,11 +2497,26 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
           </button>
         )}
       </div>
-      <div className={`match-team ${t1cls}`}>
+      <div
+        className={`match-team ${t1cls} ${manualMode ? 'manual' : ''}`}
+        onDragOver={allowDrop}
+        onDrop={handleDropOnSlot(1)}
+      >
         <div className="match-team-name-block">
-          <div className="match-team-name">
-            {t1Display.label ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t1Display.label}</span> {t1Display.name}</> : t1Display.name}
-          </div>
+          {manualMode && !readOnly && onSetSlotName ? (
+            <ManualSlotEditor
+              match={match}
+              drawType={drawType}
+              slotNum={1}
+              eventData={eventData}
+              onSetSlotName={onSetSlotName}
+              onSlotDrop={onSlotDrop}
+            />
+          ) : (
+            <div className="match-team-name">
+              {t1Display.label ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t1Display.label}</span> {t1Display.name}</> : t1Display.name}
+            </div>
+          )}
           {!readOnly && onCustomName && match.team1Id && match.team1Id !== 'BYE' && (
             <CustomNameEditor
               teamId={match.team1Id}
@@ -2393,16 +2537,31 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
         </div>
         <div className="match-scores">
           {Array.from({ length: numGames }).map((_, g) => (
-            <input key={g} type="number" className="score-box" min={0} max={30} disabled={match.isComplete || readOnly}
+            <input key={g} type="number" className="score-box" min={0} max={30} disabled={(match.isComplete && !manualMode) || readOnly}
               value={scores1[g]} onChange={e => { const a = [...scores1]; a[g] = e.target.value; setScores1(a); }} />
           ))}
         </div>
       </div>
-      <div className={`match-team ${t2cls}`}>
+      <div
+        className={`match-team ${t2cls} ${manualMode ? 'manual' : ''}`}
+        onDragOver={allowDrop}
+        onDrop={handleDropOnSlot(2)}
+      >
         <div className="match-team-name-block">
-          <div className="match-team-name">
-            {t2Display.label ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t2Display.label}</span> {t2Display.name}</> : t2Display.name}
-          </div>
+          {manualMode && !readOnly && onSetSlotName ? (
+            <ManualSlotEditor
+              match={match}
+              drawType={drawType}
+              slotNum={2}
+              eventData={eventData}
+              onSetSlotName={onSetSlotName}
+              onSlotDrop={onSlotDrop}
+            />
+          ) : (
+            <div className="match-team-name">
+              {t2Display.label ? <><span className="custom-name-tag" style={{marginRight: 4}}>{t2Display.label}</span> {t2Display.name}</> : t2Display.name}
+            </div>
+          )}
           {!readOnly && onCustomName && match.team2Id && match.team2Id !== 'BYE' && (
             <CustomNameEditor
               teamId={match.team2Id}
@@ -2423,7 +2582,7 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
         </div>
         <div className="match-scores">
           {Array.from({ length: numGames }).map((_, g) => (
-            <input key={g} type="number" className="score-box" min={0} max={30} disabled={match.isComplete || readOnly}
+            <input key={g} type="number" className="score-box" min={0} max={30} disabled={(match.isComplete && !manualMode) || readOnly}
               value={scores2[g]} onChange={e => { const a = [...scores2]; a[g] = e.target.value; setScores2(a); }} />
           ))}
         </div>
@@ -2431,13 +2590,15 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
       {canSave && <button className="match-save-btn" onClick={handleSave}>Save Score</button>}
       {canEdit && (
         <>
-          <button className="match-edit-btn" onClick={() => onEdit(match.id, drawType)}>✏️ Edit Score</button>
+          <button className="match-edit-btn" onClick={() => onEdit(match.id, drawType)}>
+            {manualMode ? '↺ Clear Scores' : '✏️ Edit Score'}
+          </button>
           {downstreamCount > 0 && (
             <div className="match-cascade-warning">⚠ Will also reset {downstreamCount} dependent match{downstreamCount !== 1 ? 'es' : ''}</div>
           )}
         </>
       )}
-      {!readOnly && onManualReset && (drawType === 'CD' || drawType === 'WCD') && (
+      {!readOnly && onManualReset && (drawType === 'CD' || drawType === 'WCD') && !manualMode && (
         <button
           className="match-manual-btn"
           onClick={() => onManualReset(match.id, drawType)}
@@ -2453,7 +2614,7 @@ function MatchCard({ match, eventData, drawType, readOnly, onSave, onEdit, onCus
   );
 }
 
-function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, onManualReset, matchNumberMap, highlightedMatchId }) {
+function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onCustomName, onSlotLabel, onToggleMarshal, onManualReset, onSetSlotName, onSlotDrop, matchNumberMap, highlightedMatchId }) {
   if (!drawData || !drawData.rounds || drawData.rounds.length === 0) return <p className="text-dim" style={{padding:10}}>No draw data.</p>;
   const roundLabels = {
     MD: ['Round 1', 'Round 2', 'Quarter-Finals', 'Semi-Finals', 'Final'],
@@ -2483,6 +2644,8 @@ function DrawView({ drawData, eventData, drawType, readOnly, onSave, onEdit, onC
                   onSlotLabel={onSlotLabel}
                   onToggleMarshal={onToggleMarshal}
                   onManualReset={onManualReset}
+                  onSetSlotName={onSetSlotName}
+                  onSlotDrop={onSlotDrop}
                   matchNumber={matchNumberMap ? matchNumberMap[m.id] : null}
                   highlightedMatchId={highlightedMatchId}
                 />
@@ -2517,6 +2680,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
         if (!ev[eid].consolationDraw || !ev[eid].consolationDraw.rounds || !Array.isArray(ev[eid].consolationDraw.rounds)) ev[eid].consolationDraw = generateConsolationDraw();
         if (!ev[eid].waterfallConsolationDraw || !ev[eid].waterfallConsolationDraw.rounds || !Array.isArray(ev[eid].waterfallConsolationDraw.rounds)) ev[eid].waterfallConsolationDraw = generateWaterfallDraw();
         if (!Array.isArray(ev[eid].adhocTeams)) ev[eid].adhocTeams = [];
+        if (typeof ev[eid].manualMode !== 'boolean') ev[eid].manualMode = false;
         ev[eid].teams.forEach((t, idx) => {
           if (t.originalPlayerSlot === undefined) t.originalPlayerSlot = idx;
           t.mainDrawLosses = t.mainDrawLosses || 0;
@@ -2621,7 +2785,21 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
 
   const handleScoreEdit = async (matchId, drawType) => {
     if (!canEdit) return;
-    const downstream = countDownstreamPlayed(events[activeEvent], matchId);
+    const cur = events[activeEvent];
+    const isManual = !!(cur && cur.manualMode);
+    if (isManual) {
+      if (!confirm('Clear this match\'s score? In manual mode no other matches will be reset.')) return;
+      await mutate((ev) => {
+        const m = findMatch(ev, drawType, matchId);
+        if (!m) return false;
+        m.score1 = []; m.score2 = [];
+        m.winnerId = null; m.loserId = null;
+        m.isComplete = false; m.isBye = false;
+        m.marshalled = false;
+      });
+      return;
+    }
+    const downstream = countDownstreamPlayed(cur, matchId);
     let msg = `Reset the score for this match so you can re-enter it?`;
     if (downstream > 0) {
       msg = `This will also reset ${downstream} downstream match${downstream !== 1 ? 'es' : ''} whose results depend on this one. Continue?`;
@@ -2756,6 +2934,105 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
     });
   }, [mutate, canEdit, events, activeEvent]);
 
+  /* ═══════ Feature 3 — Event-wide manual mode toggle ═══════
+     Flipping this on freezes all automatic placement / propagation
+     for the active event so the editor can rearrange match cards
+     freely (typed names, drag-drop). Existing assignments and
+     winnerIds remain in place and stay editable. */
+  const handleToggleManualMode = useCallback(async () => {
+    if (!canEdit) return;
+    const cur = events && events[activeEvent];
+    if (!cur) return;
+    const turningOn = !cur.manualMode;
+    const msg = turningOn
+      ? `Switch ${EVENT_CODES[activeEvent]} to MANUAL mode? Every match card becomes editable. Winners and losers will no longer auto-advance — you'll move them manually by drag-and-drop or by typing names. Existing assignments stay in place.`
+      : `Switch ${EVENT_CODES[activeEvent]} back to AUTO mode? Auto source-based placement and propagation will resume. Manually-set names remain.`;
+    if (!confirm(msg)) return;
+    await mutate(ev => {
+      ev.manualMode = !ev.manualMode;
+      // When returning to auto mode, run a populate pass so any TBD slots
+      // can refill from sources without disturbing manual entries.
+      if (!ev.manualMode) populateAllDraws(ev);
+    });
+  }, [mutate, canEdit, events, activeEvent]);
+
+  /* Set or clear a match slot's team via the manual editor input. An
+     empty value clears the slot; non-empty values create (or reuse) an
+     adhoc team with that exact name. */
+  const handleSetSlotName = useCallback(async (matchId, drawType, slotNum, rawName) => {
+    if (!canEdit) return;
+    await mutate(ev => {
+      const m = findMatch(ev, drawType, matchId);
+      if (!m) return false;
+      const trimmed = (rawName || '').trim();
+      if (!Array.isArray(ev.adhocTeams)) ev.adhocTeams = [];
+      let newId;
+      if (!trimmed) {
+        newId = null;
+      } else if (trimmed.toUpperCase() === 'BYE') {
+        newId = 'BYE';
+      } else {
+        // Reuse an existing seeded team that exactly matches the typed name,
+        // otherwise reuse an adhoc with that name, otherwise create one.
+        let reuse = ev.teams.find(t => t.id !== 'BYE' && t.name === trimmed);
+        if (!reuse) reuse = ev.adhocTeams.find(t => t.name === trimmed);
+        if (!reuse) {
+          const id = `${ev.id || activeEvent}_manual_${Date.now()}_${Math.random().toString(36).slice(2,7)}_${slotNum}`;
+          reuse = { id, name: trimmed, customDisplayName: '',
+            originalPlayerSlot: -1, mainDrawLosses: 0, consolationLosses: 0 };
+          ev.adhocTeams.push(reuse);
+        }
+        newId = reuse.id;
+      }
+      // Setting team1Id/team2Id invalidates any stored result on this match.
+      if (slotNum === 1) {
+        if (m.team1Id !== newId) {
+          m.team1Id = newId;
+          m.score1 = []; m.score2 = [];
+          m.winnerId = null; m.loserId = null;
+          m.isComplete = false; m.isBye = false;
+        }
+      } else {
+        if (m.team2Id !== newId) {
+          m.team2Id = newId;
+          m.score1 = []; m.score2 = [];
+          m.winnerId = null; m.loserId = null;
+          m.isComplete = false; m.isBye = false;
+        }
+      }
+    });
+  }, [mutate, canEdit, activeEvent]);
+
+  /* Drop handler — copies the dragged source slot's teamId to the target
+     slot. Source isn't cleared (so the editor can leave the winner shown
+     in the source match and also seat them in the next round). */
+  const handleSlotDrop = useCallback(async (sourceMatchId, sourceDrawType, sourceSlotNum, targetMatchId, targetDrawType, targetSlotNum) => {
+    if (!canEdit) return;
+    if (sourceMatchId === targetMatchId && sourceSlotNum === targetSlotNum) return;
+    await mutate(ev => {
+      const src = findMatch(ev, sourceDrawType, sourceMatchId);
+      const tgt = findMatch(ev, targetDrawType, targetMatchId);
+      if (!src || !tgt) return false;
+      const srcId = sourceSlotNum === 1 ? src.team1Id : src.team2Id;
+      if (!srcId) return false;
+      if (targetSlotNum === 1) {
+        if (tgt.team1Id !== srcId) {
+          tgt.team1Id = srcId;
+          tgt.score1 = []; tgt.score2 = [];
+          tgt.winnerId = null; tgt.loserId = null;
+          tgt.isComplete = false; tgt.isBye = false;
+        }
+      } else {
+        if (tgt.team2Id !== srcId) {
+          tgt.team2Id = srcId;
+          tgt.score1 = []; tgt.score2 = [];
+          tgt.winnerId = null; tgt.loserId = null;
+          tgt.isComplete = false; tgt.isBye = false;
+        }
+      }
+    });
+  }, [mutate, canEdit]);
+
   /* ═══════ Feature 2 — Manually reset & populate a CD or WCD match.
      Cascade is scoped to that draw only, so a WCD reset never touches
      MD or CD (and vice versa for CD). ═══════ */
@@ -2865,6 +3142,7 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           if (!imported[eid].consolationDraw || !imported[eid].consolationDraw.rounds) imported[eid].consolationDraw = generateConsolationDraw();
           if (!imported[eid].waterfallConsolationDraw || !imported[eid].waterfallConsolationDraw.rounds) imported[eid].waterfallConsolationDraw = generateWaterfallDraw();
           if (!Array.isArray(imported[eid].adhocTeams)) imported[eid].adhocTeams = [];
+          if (typeof imported[eid].manualMode !== 'boolean') imported[eid].manualMode = false;
           imported[eid].mainDraw = deserializeDrawFromFirestore(imported[eid].mainDraw);
           imported[eid].consolationDraw = deserializeDrawFromFirestore(imported[eid].consolationDraw);
           imported[eid].waterfallConsolationDraw = deserializeDrawFromFirestore(imported[eid].waterfallConsolationDraw);
@@ -3002,6 +3280,13 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
           <button className="btn btn-sm" onClick={handleImportCSV}>⬆ Teams CSV</button>
           <div style={{ flex: 1 }}></div>
           <span className="text-sm" style={{ color: 'var(--red)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>⚠ Caution</span>
+          <button
+            className={`btn btn-sm ${ev && ev.manualMode ? 'btn-purple' : ''}`}
+            onClick={handleToggleManualMode}
+            title={ev && ev.manualMode ? 'Manual mode is ON for this event — click to return to auto mode.' : 'Turn this event into a fully manual draw — every name and score becomes editable, and winners are moved by drag-drop or typing.'}
+          >
+            {ev && ev.manualMode ? '🔓 Manual: ON' : '🔓 Manual Mode'}
+          </button>
           <button className="btn btn-danger btn-sm" onClick={handleResetEvent}>🗑 Reset Event</button>
         </div>
       )}
@@ -3087,17 +3372,22 @@ function TournamentView({ tournamentId, user, readOnly, onBack }) {
               ))}
             </div>
           </div>
+          {ev.manualMode && (
+            <div className="manualmode-banner">
+              🔓 Manual mode is ON for {EVENT_CODES[activeEvent]}. Every name and score is editable. Drag a player by the ⠿ handle (or type a name) to move them between matches. Auto-advancement is paused until you turn manual mode off.
+            </div>
+          )}
           <div className="card draw-section">
             <h3>Main Draw</h3>
-            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.mainDraw} eventData={ev} drawType="MD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} onSetSlotName={canEdit ? handleSetSlotName : null} onSlotDrop={canEdit ? handleSlotDrop : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Consolation Draw</h3>
-            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} onManualReset={canEdit ? handleManualReset : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.consolationDraw} eventData={ev} drawType="CD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} onManualReset={canEdit ? handleManualReset : null} onSetSlotName={canEdit ? handleSetSlotName : null} onSlotDrop={canEdit ? handleSlotDrop : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
           <div className="card draw-section">
             <h3>Waterfall Consolations</h3>
-            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} onManualReset={canEdit ? handleManualReset : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
+            <DrawView drawData={ev.waterfallConsolationDraw} eventData={ev} drawType="WCD" readOnly={!canEdit} onSave={handleScoreSave} onEdit={canEdit ? handleScoreEdit : null} onCustomName={canEdit ? handleCustomNameUpdate : null} onSlotLabel={canEdit ? handleSlotLabelUpdate : null} onToggleMarshal={canEdit ? handleToggleMarshal : null} onManualReset={canEdit ? handleManualReset : null} onSetSlotName={canEdit ? handleSetSlotName : null} onSlotDrop={canEdit ? handleSlotDrop : null} matchNumberMap={matchNumberMap} highlightedMatchId={highlightedMatchId} />
           </div>
         </>
       )}
